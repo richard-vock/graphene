@@ -62,6 +62,7 @@ renderer::init()
             data.ibo = std::make_unique<data_buffer>(indices, GL_STATIC_DRAW);
             data.vao = std::make_unique<vertex_array>();
             data.vao->set_index_buffer(*data.ibo);
+            gbuffer_vs_->buffer_binding(*data.vao, "pos", "nrm", "fltcol", "uv", padding(sizeof(float))) = *data.vbo;
         }
 
         if (auto tex = obj->texture()) {
@@ -143,7 +144,6 @@ renderer::render()
         }
 
         if (obj.vertex_count) {
-            gbuffer_vs_->buffer_binding(*obj.vao, "pos", "nrm", "fltcol", "uv", padding(sizeof(float))) = *obj.vbo;
             obj.vao->bind();
             glDrawElements(obj.mode, obj.vertex_count, GL_UNSIGNED_INT, 0);
         }

@@ -2,7 +2,8 @@
 namespace fs = std::filesystem;
 
 #include <graphene/graphene.hpp>
-#include <graphene/assimp.hpp>
+//#include <graphene/assimp.hpp>
+#include <graphene/pcl.hpp>
 using namespace graphene;
 
 #include <CLI/CLI.hpp>
@@ -12,17 +13,19 @@ main(int argc, char const** argv)
 {
     CLI::App app("Simple Visualizer");
     std::vector<fs::path> input_files;
-    bool flat;
-    app.add_flag("-f,--flat", flat, "Flat shading");
     auto* opt_input = app.add_option("input", input_files, "Input Files");
     opt_input->required()->check(CLI::ExistingFile);
     CLI11_PARSE(app, argc, argv);
 
+    mat4f_t scale = mat4f_t::Identity();
+    scale.topLeftCorner<3,3>() *= 10.f;
     std::vector<std::shared_ptr<renderable>> objects;
     for (const auto& input_file : input_files) {
-        std::vector<std::shared_ptr<renderable>> file_meshes;
-        file_meshes = assimp::load_meshes(input_file, !flat);
-        objects.insert(objects.end(), file_meshes.begin(), file_meshes.end());
+        //auto meshes = assimp::load_meshes(input_file, true);
+        //objects.insert(objects.end(), meshes.begin(), meshes.end());
+        auto cloud = pcl::load_cloud(input_file, vec4f_t::Ones());
+        cloud->move(scale);
+        objects.push_back(cloud);
     }
 
     application vis(
@@ -51,10 +54,10 @@ main(int argc, char const** argv)
 
     // on init add meshes
     auto init = [&]() {
-        uint32_t mesh_idx = 1;
+        uint32_t obj_idx = 1;
         for (auto obj : objects) {
             vis.events()->emit<events::add_object>(
-                fmt::format("mesh {:02}", mesh_idx++), obj);
+                fmt::format("mesh {:02}", obj_idx++), obj);
         }
     };
 
