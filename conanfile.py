@@ -17,13 +17,14 @@ class GrapheneConan(ConanFile):
     description = "3D Visualization Prototyping Library"
     topics = ("rendering", "visualization", "pointclouds", "meshes")
     settings = "os", "compiler", "build_type", "arch"
-    options = {"shared": [True, False]}
-    default_options = "shared=False"
+    options = {"shared": [True, False], "verbose": [True, False]}
+    default_options = "shared=False", "verbose=False"
     generators = "cmake"
     exports_sources = "!include/graphene/config.hpp", "include*", "src*", "glsl*", "CMakeLists.txt", "config.hpp.in"
 
     def build(self):
         cmake = CMake(self)
+        cmake.definitions["DEBUG_VERBOSE"] = self.options.verbose
         cmake.configure()
         cmake.build()
 

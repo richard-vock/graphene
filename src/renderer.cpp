@@ -7,7 +7,34 @@ using namespace baldr;
 
 namespace graphene::detail {
 
-renderer::renderer(std::shared_ptr<event_manager> events, std::shared_ptr<camera> cam) : events_(events), cam_(cam) { init(); }
+vec2f_t
+correct_near_far(const bbox3f_t& bbox, const ray_t& view, const mat4f_t& transform, vec2f_t nf) {
+    auto add = [&] (bbox3f_t::CornerType c) {
+        vec3f_t pos = (transform * bbox.corner(c).homogeneous()).head(3);
+        float t = view.direction().dot(pos - view.origin());
+        nf[0] = std::min(nf[0], t);
+        nf[1] = std::max(nf[1], t);
+    };
+
+    add(bbox3f_t::BottomLeftFloor);
+    add(bbox3f_t::BottomRightFloor);
+    add(bbox3f_t::TopLeftFloor);
+    add(bbox3f_t::TopRightFloor);
+    add(bbox3f_t::BottomLeftCeil);
+    add(bbox3f_t::BottomRightCeil);
+    add(bbox3f_t::TopLeftCeil);
+    add(bbox3f_t::TopRightCeil);
+
+    return nf;
+}
+
+renderer::renderer(std::shared_ptr<event_manager> events,
+                   std::shared_ptr<camera> cam,
+                   shared<float> occlusion_threshold)
+    : events_(events), cam_(cam), occlusion_threshold_(occlusion_threshold)
+{
+    init();
+}
 
 renderer::~renderer() {}
 
@@ -20,6 +47,16 @@ renderer::init()
                                GL_FRAGMENT_SHADER);
 
     pipeline_ = std::make_shared<shader_pipeline>(gbuffer_vs_, gbuffer_fs_);
+
+    render_depth_shader_ = shader_program::load(
+        SHADER_ROOT + "render_depth.frag", GL_FRAGMENT_SHADER);
+    render_depth_ =
+        std::make_shared<baldr::fullscreen_pass>(render_depth_shader_);
+
+    visibility_shader_ = shader_program::load(
+        SHADER_ROOT + "visibility.frag", GL_FRAGMENT_SHADER);
+    visibility_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(visibility_shader_);
 
     // clear color
     clear_color_ = vec3f_t(0.2f, 0.2f, 0.2f);
@@ -70,6 +107,10 @@ renderer::init()
             data.texture = texture::rgba32f(size[0], size[1]);
             data.texture->set(tex->data());
         }
+
+        // bbox min/max are colwise min/max over the first 3 columns
+        data.bbox.min() = data_mat.block(0, 0, data_mat.rows(), 3).colwise().minCoeff().transpose();
+        data.bbox.max() = data_mat.block(0, 0, data_mat.rows(), 3).colwise().maxCoeff().transpose();
     });
 
     // remove object
@@ -97,7 +138,23 @@ renderer::init()
     });
 
     // viewport dependent initialization
-    auto reshape = [&](vec4i_t ) {
+    auto reshape = [&](vec4i_t vp) {
+        // textures
+        gbuffer_depth_ = texture::depth32f(vp[2], vp[3]);
+        //visibility_mask_ = texture::rgba32f(vp[2], vp[3]);
+
+        // geometry pass
+        gbuffer_fs_->depth_attachment() = *gbuffer_depth_;
+
+        // visibility pass
+        visibility_shader_->sampler("depth_tex") = *gbuffer_depth_;
+        //visibility_shader_->output("mask") = *visibility_mask_;
+
+        // render depth pass
+        //render_depth_shader_->sampler("depth_tex") = *gbuffer_depth_;
+
+
+
         //compose_tex_ = texture::rgba32f(vp[2], vp[3]);
         //red_tex_ = texture::rgba32f(vp[2], vp[3]);
         //gbuffer_fs_->output("color") = *compose_tex_;
@@ -110,23 +167,55 @@ renderer::init()
 void
 renderer::render()
 {
-    gbuffer_vs_->uniform("view_mat") = cam_->view_matrix();
-    gbuffer_fs_->uniform("view_mat") = cam_->view_matrix();
-    if (cam_->projection_matrix_changed()) {
-        gbuffer_vs_->uniform("proj_mat") =
-            cam_->projection_matrix();
+    mat4f_t vmat = cam_->view_matrix();
+    gbuffer_vs_->uniform("view_mat") = vmat;
+    gbuffer_fs_->uniform("view_mat") = vmat;
+
+    // estimate near/far values using object bounding boxes
+    vec2f_t nf(std::numeric_limits<float>::max(), 0.f);
+    if (objects_.size()) {
+        ray_t view(cam_->position(), cam_->forward());
+        for (auto && [name, obj] : objects_) {
+            nf = correct_near_far(obj.bbox, view, obj.transform, nf);
+        }
+        nf[0] -= 0.01f;
+        nf[1] += 0.01f;
+        if (nf[0] < 0.001f) {
+            nf[0] = 0.001f;
+        }
+        if (nf[1] <= nf[0]) {
+            nf[1] = nf[0] + 0.001f;
+        }
+    } else {
+        nf[0] = 0.01f;
+        nf[1] = 200.f;
     }
+
+    mat4f_t pmat = cam_->projection_matrix(nf);
+
     vec4i_t vp = cam_->viewport();
     glViewport(vp[0], vp[1], vp[2], vp[3]);
+
+    gbuffer_vs_->uniform("proj_mat") = pmat;
+    visibility_shader_->uniform("proj_mat") = pmat;
+    visibility_shader_->uniform("near_size") = cam_->near_plane_size();
+    visibility_shader_->uniform("width") = vp[2];
+    visibility_shader_->uniform("height") = vp[3];
+    visibility_shader_->uniform("occlusion_threshold") = *occlusion_threshold_;
+    //render_depth_shader_->uniform("proj_mat") = pmat;
+    //render_depth_shader_->uniform("near") = nf[0];
+    //render_depth_shader_->uniform("far") = nf[1];
 
     {
         std::lock_guard lock(data_mutex_);
         glClearColor(clear_color_[0], clear_color_[1], clear_color_[2], 1.f);
     }
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
 
-    //backbuffer()->bind();
+    // write to depth buffer only
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+
     pipeline_->bind();
 
     for (auto && [name, obj] : objects_) {
@@ -143,10 +232,19 @@ renderer::render()
             gbuffer_fs_->sampler("tex") = *obj.texture;
         }
 
+        gbuffer_fs_->current_framebuffer()->clear_depth(2.f);
+        gbuffer_fs_->current_framebuffer()->bind();
         if (obj.vertex_count) {
             obj.vao->bind();
             glDrawElements(obj.mode, obj.vertex_count, GL_UNSIGNED_INT, 0);
         }
+
+        //visibility_shader_->current_framebuffer()->bind();
+        backbuffer()->bind();
+        visibility_pass_->render(vp);
+
+        //backbuffer()->bind();
+        //render_depth_->render(vp);
     }
 }
 

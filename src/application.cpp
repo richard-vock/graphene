@@ -12,6 +12,9 @@ using namespace baldr;
 #include <graphene/events.hpp>
 #include <graphene/camera.hpp>
 #include <graphene/orbit_camera_model.hpp>
+#include <graphene/window.hpp>
+#include <graphene/range.hpp>
+#include <graphene/section.hpp>
 
 #include <impl/renderer.hpp>
 
@@ -174,13 +177,22 @@ application::impl::start()
             looking_at{ vec3f_t(5.f, -20.f, 5.f), vec3f_t(0.f, 0.f, 0.f) },
             events_,
             vec4i_t(0, 0, params.window_size[0], params.window_size[1]),
-            60.f,
-            0.01f,
-            200.f
+            60.f
         );
 
-        detail::renderer renderer(events_, cam);
+        shared<float> occlusion_threshold = 0.5f;
+        detail::renderer renderer(events_, cam, occlusion_threshold);
         init_();
+
+        // clang-format off
+        property::window vis_window(
+            "graphene",
+            property::section(
+                "Rendering",
+                property::range("Occlusion Threshold", occlusion_threshold, bounds{0.f, 1.f})
+            )
+        );
+        // clang-format on
 
         std::unique_lock<std::mutex> lk(loop_mutex_);
         while (!start_loop_) {
@@ -192,6 +204,7 @@ application::impl::start()
 
             imgui::init_frame();
 
+            vis_window.render();
             render_ui_();
 
             ImGui::Render();

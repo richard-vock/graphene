@@ -23,7 +23,7 @@
 
 namespace graphene {
 
-#if !(defined(NDEBUG)) || defined(DEBUG)
+#if !(defined(NDEBUG)) || defined(DEBUG) || defined(DEBUG_VERBOSE)
 constexpr bool debug = true;
 #ifdef DEBUG_VERBOSE
 constexpr bool debug_verbose = true;
@@ -57,6 +57,8 @@ typedef Eigen::Matrix4f mat4f_t;
 
 typedef Eigen::AlignedBox<float, 2> bbox2f_t;
 typedef Eigen::AlignedBox<float, 3> bbox3f_t;
+
+typedef Eigen::ParametrizedLine<float, 3> ray_t;
 
 template <typename T>
 struct bounds
