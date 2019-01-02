@@ -46,5 +46,9 @@ linearize_depth(float depth) {
 void main() {
     /*float depth = texture(depth_tex, uv).r;*/
     /*color = depth == 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : color_map(linearize_depth(depth));*/
-    color = color_map(texture(tex, uv).r);
+    float depth = texture(tex, uv).g;
+    if (depth >= 1.0) {
+        discard;
+    }
+    color = color_map(depth);
 }

@@ -1,4 +1,5 @@
 [requires]
+baldr/0.1@richard-vock/dev
 graphene/0.1@richard-vock/dev
 graphene-pcl/0.1@richard-vock/dev
 CLI11/1.6.2@cliutils/stable

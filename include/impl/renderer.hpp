@@ -48,10 +48,12 @@ protected:
     std::shared_ptr<baldr::shader_program> render_depth_shader_;
     std::shared_ptr<baldr::fullscreen_pass> render_depth_pass_;
 
-    std::shared_ptr<baldr::texture> visibility_depth_;
-    std::shared_ptr<baldr::texture> visibility_mask_;
+    std::shared_ptr<baldr::texture> visibility_map_;
+    std::shared_ptr<baldr::texture> visibility_map_pp_;
     std::shared_ptr<baldr::shader_program> visibility_shader_;
+    std::shared_ptr<baldr::shader_program> anisotropic_fill_shader_;
     std::shared_ptr<baldr::fullscreen_pass> visibility_pass_;
+    std::shared_ptr<baldr::fullscreen_pass> anisotropic_fill_pass_;
 
     std::mutex data_mutex_;
     std::map<std::string, render_data> objects_;

@@ -180,7 +180,7 @@ application::impl::start()
             60.f
         );
 
-        shared<float> occlusion_threshold = 0.5f;
+        shared<float> occlusion_threshold = 0.05f;
         detail::renderer renderer(events_, cam, occlusion_threshold);
         init_();
 
@@ -201,20 +201,19 @@ application::impl::start()
 
         while (!loop_finished()) {
             glfwPollEvents();
+            glfwMakeContextCurrent(window_);
 
             imgui::init_frame();
 
-            //vis_window.render();
-            //render_ui_();
+            vis_window.render();
+            render_ui_();
 
-            //ImGui::Render();
-            glfwMakeContextCurrent(window_);
+            ImGui::Render();
 
             renderer.render();
 
-            //imgui::draw_frame();
+            imgui::draw_frame();
 
-            //glfwMakeContextCurrent(window_);
             glfwSwapBuffers(window_);
         }
 

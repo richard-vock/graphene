@@ -58,9 +58,13 @@ renderer::init()
         SHADER_ROOT + "visibility.frag", GL_FRAGMENT_SHADER);
     visibility_pass_ =
         std::make_shared<baldr::fullscreen_pass>(visibility_shader_);
+    anisotropic_fill_shader_ = shader_program::load(
+        SHADER_ROOT + "anisotropic_fill.frag", GL_FRAGMENT_SHADER);
+    anisotropic_fill_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(anisotropic_fill_shader_);
 
     // clear color
-    clear_color_ = vec4f_t(0.2f, 0.2f, 0.2f, 1.f);
+    clear_color_ = vec4f_t(0.3f, 0.3f, 0.3f, 1.f);
 
     // add object
     events_->connect<events::add_object>([&](std::string name, std::shared_ptr<const renderable> obj) {
@@ -138,8 +142,8 @@ renderer::init()
     auto reshape = [&](vec4i_t vp) {
         // textures
         gbuffer_depth_ = texture::depth32f(vp[2], vp[3]);
-        visibility_depth_ = texture::depth32f(vp[2], vp[3]);
-        visibility_mask_ = texture::r32f(vp[2], vp[3]);
+        visibility_map_ = texture::rg32f(vp[2], vp[3]);
+        visibility_map_pp_ = texture::rg32f(vp[2], vp[3]);
     };
     reshape(cam_->viewport());
     events_->connect<events::window_resize>(reshape);
@@ -178,14 +182,16 @@ renderer::render()
     glViewport(vp[0], vp[1], vp[2], vp[3]);
 
     gbuffer_vs_->uniform("proj_mat") = pmat;
+    constexpr uint32_t kernel_size = 9;
     visibility_shader_->uniform("proj_mat") = pmat;
     visibility_shader_->uniform("near_size") = cam_->near_plane_size();
     visibility_shader_->uniform("width") = vp[2];
     visibility_shader_->uniform("height") = vp[3];
-    //visibility_shader_->uniform("occlusion_threshold") = *occlusion_threshold_;
-    //render_depth_shader_->uniform("proj_mat") = pmat;
-    //render_depth_shader_->uniform("near") = nf[0];
-    //render_depth_shader_->uniform("far") = nf[1];
+    visibility_shader_->uniform("occlusion_threshold") = *occlusion_threshold_;
+    visibility_shader_->uniform("kernel_size") = kernel_size;
+    anisotropic_fill_shader_->uniform("width") = vp[2];
+    anisotropic_fill_shader_->uniform("height") = vp[3];
+    anisotropic_fill_shader_->uniform("delta") = 1.f;
 
     gbuffer_pass_->render(render_options{
             .depth_attachment = gbuffer_depth_,
@@ -216,20 +222,30 @@ renderer::render()
 
     visibility_pass_->render(render_options{
         .input = {{"depth_tex", gbuffer_depth_}},
-        .output = {{"mask", visibility_mask_}},
-        .depth_attachment = visibility_depth_,
-        .depth_write = true,
-        .clear_depth = 1.f,
+        .output = {{"map", visibility_map_}},
+        .depth_write = false,
         .clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
     });
-    glTextureBarrier();
 
-    std::vector<float> img(vp[3]*vp[2], 0.0f);
-    visibility_depth_->get(0, img.data());
-    pdebug("vis range: [{}, {}]", *std::min_element(img.begin(), img.end()), *std::max_element(img.begin(), img.end()));
+    //for (uint32_t i = 0; i < 2*kernel_size; ++i) {
+        //// we necessarily have an even iteration count
+        //// the final result will therefore be in the original
+        //// input map (visibility_map_)
+        //std::shared_ptr<texture> in, out;
+        //anisotropic_fill_pass_->render(render_options{
+            //.input = {{"input_map", (i % 2 == 0) ? visibility_map_ : visibility_map_pp_ }},
+            //.output = {{"output_map", (i % 2 == 0) ? visibility_map_pp_ : visibility_map_}},
+            //.depth_write = false,
+            //.clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
+        //});
+    //}
+
+    //std::vector<float> img(vp[3]*vp[2], 0.0f);
+    //visibility_depth_->get(0, img.data());
+    //pdebug("vis range: [{}, {}]", *std::min_element(img.begin(), img.end()), *std::max_element(img.begin(), img.end()));
 
     render_depth_pass_->render(render_options{
-        .input = {{"tex", visibility_mask_}},
+        .input = {{"tex", visibility_map_}},
         .clear_color = *clear_color_
     });
 }

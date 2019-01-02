@@ -68,7 +68,7 @@ static void update_mouse_state();
 
 static void update_mouse_cursor();
 
-static const char* get_cilpboard_text(void* user_data);
+static const char* get_clipboard_text(void* user_data);
 
 static void set_clipboard_text(void* user_data, const char* text);
 
@@ -149,7 +149,7 @@ init_application(GLFWwindow* window, const std::string& font_path,
     io.KeyMap[ImGuiKey_Z] = GLFW_KEY_Z;
 
     io.SetClipboardTextFn = detail::set_clipboard_text;
-    io.GetClipboardTextFn = detail::get_cilpboard_text;
+    io.GetClipboardTextFn = detail::get_clipboard_text;
     io.ClipboardUserData = g_Window;
 #if defined(_WIN32)
     io.ImeWindowHandle = (void*)glfwGetWin32Window(g_Window);
@@ -330,27 +330,7 @@ draw_frame()
     if (fb_width <= 0 || fb_height <= 0) return;
     draw_data->ScaleClipRects(io.DisplayFramebufferScale);
 
-    // Backup GL state
-    GLenum last_active_texture;
-    glGetIntegerv(GL_ACTIVE_TEXTURE, (GLint*)&last_active_texture);
     glActiveTexture(GL_TEXTURE0);
-    GLint last_program;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &last_program);
-    GLint last_texture;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-#ifdef GL_SAMPLER_BINDING
-    GLint last_sampler;
-    glGetIntegerv(GL_SAMPLER_BINDING, &last_sampler);
-#endif
-    GLint last_array_buffer;
-    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &last_array_buffer);
-    GLint last_vertex_array;
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &last_vertex_array);
-    GLint last_viewport[4];
-    glGetIntegerv(GL_VIEWPORT, last_viewport);
-
-    // Setup render state: alpha-blending enabled, no face culling, no depth
-    // testing, scissor enabled, polygon fill
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -385,10 +365,10 @@ draw_frame()
     g_pipeline->bind();
     glProgramUniform1i(g_frag_shader->program(), g_frag_shader->sampler("tex").location, 0);
     g_vert_shader->uniform("mvp") = ortho_proj;
-#ifdef GL_SAMPLER_BINDING
-    glBindSampler(0, 0);  // We use combined texture/sampler state. Applications
-                          // using GL 3.3 may set that otherwise.
-#endif
+//#ifdef GL_SAMPLER_BINDING
+//    glBindSampler(0, 0);  // We use combined texture/sampler state. Applications
+//                          // using GL 3.3 may set that otherwise.
+//#endif
     // Recreate the VAO every time
     // (This is to easily allow multiple GL contexts. VAO are not shared among
     // GL contexts, and we don't track creation/deletion of windows so we don't
@@ -456,18 +436,20 @@ draw_frame()
     }
     glDeleteVertexArrays(1, &vao_handle);
 
-    // Restore modified GL state
-    glUseProgram(0);
-    glBindTexture(GL_TEXTURE_2D, last_texture);
-#ifdef GL_SAMPLER_BINDING
-    glBindSampler(0, last_sampler);
-#endif
-    glActiveTexture(last_active_texture);
-    glBindVertexArray(last_vertex_array);
-    glBindBuffer(GL_ARRAY_BUFFER, last_array_buffer);
+    glDisable(GL_BLEND);
     glDisable(GL_SCISSOR_TEST);
-    glViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2],
-               (GLsizei)last_viewport[3]);
+
+    // Restore modified GL state
+//    glUseProgram(0);
+//    glBindTexture(GL_TEXTURE_2D, last_texture);
+//#ifdef GL_SAMPLER_BINDING
+//    glBindSampler(0, last_sampler);
+//#endif
+//    glActiveTexture(last_active_texture);
+//    glBindVertexArray(last_vertex_array);
+//    glBindBuffer(GL_ARRAY_BUFFER, last_array_buffer);
+//    glViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2],
+//               (GLsizei)last_viewport[3]);
 }
 
 namespace detail {
@@ -530,7 +512,7 @@ update_mouse_cursor()
 }
 
 const char*
-get_cilpboard_text(void* user_data)
+get_clipboard_text(void* user_data)
 {
     return glfwGetClipboardString((GLFWwindow*)user_data);
 }
@@ -667,10 +649,10 @@ bool
 create_device_objects()
 {
     // Backup GL state
-    GLint last_texture, last_array_buffer, last_vertex_array;
-    glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
-    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &last_array_buffer);
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &last_vertex_array);
+    //GLint last_texture, last_array_buffer, last_vertex_array;
+    //glGetIntegerv(GL_TEXTURE_BINDING_2D, &last_texture);
+    //glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &last_array_buffer);
+    //glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &last_vertex_array);
 
     g_vert_shader = shader_program::load(SHADER_ROOT + "imgui.vert", GL_VERTEX_SHADER);
     g_frag_shader = shader_program::load(SHADER_ROOT + "imgui.frag", GL_FRAGMENT_SHADER);
@@ -687,9 +669,9 @@ create_device_objects()
     detail::create_fonts_texture();
 
     // Restore modified GL state
-    glBindTexture(GL_TEXTURE_2D, last_texture);
-    glBindBuffer(GL_ARRAY_BUFFER, last_array_buffer);
-    glBindVertexArray(last_vertex_array);
+    //glBindTexture(GL_TEXTURE_2D, last_texture);
+    //glBindBuffer(GL_ARRAY_BUFFER, last_array_buffer);
+    //glBindVertexArray(last_vertex_array);
 
     return true;
 }

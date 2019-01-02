@@ -13,4 +13,4 @@ add_executable(simple
     "src/simple.cpp"
 )
 target_compile_features(simple PUBLIC cxx_std_17)
-target_link_libraries(simple CONAN_PKG::graphene CONAN_PKG::graphene-pcl CONAN_PKG::CLI11)
+target_link_libraries(simple CONAN_PKG::baldr CONAN_PKG::graphene CONAN_PKG::graphene-pcl CONAN_PKG::CLI11)
