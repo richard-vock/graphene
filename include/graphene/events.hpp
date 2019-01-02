@@ -70,11 +70,6 @@ struct show_object
     typedef void(signature)(std::string);
 };
 
-struct set_clear_color
-{
-    typedef void(signature)(vec3f_t);
-};
-
 
 }  // namespace events
 
@@ -91,8 +86,7 @@ using event_manager =
         events::add_object,
         events::remove_object,
         events::hide_object,
-        events::show_object,
-        events::set_clear_color
+        events::show_object
     >;
 // clang-format on
 

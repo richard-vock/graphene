@@ -9,7 +9,7 @@ layout(location=5) uniform float occlusion_threshold;
 
 layout(location=0) in vec2 uv;
 
-layout(location=0) out vec4 color;
+layout(location=0) out float mask;
 
 const vec3[] map_colors = {
     vec3(1.00000, 1.00000, 0.80000),
@@ -124,5 +124,7 @@ void main() {
     ivec2 center = ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y));
     float depth = texelFetch(depth_tex, center, 0).r;
     float occ = occlusion(center, depth);
-    color = (depth == 1.0 || occ > occlusion_threshold) ? vec4(0.0, 0.0, 0.0, 1.0) : color_map(occ);
+    //color = (depth == 1.0 || occ > occlusion_threshold) ? vec4(0.0, 0.0, 0.0, 1.0) : color_map(occ);
+    mask = 1.0-occ;//color_map(occ);
+    gl_FragDepth = 0.0;//occ > occlusion_threshold ? 1.0 : depth;//color_map(occ);
 }

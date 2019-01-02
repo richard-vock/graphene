@@ -12,8 +12,10 @@ correct_near_far(const bbox3f_t& bbox, const ray_t& view, const mat4f_t& transfo
     auto add = [&] (bbox3f_t::CornerType c) {
         vec3f_t pos = (transform * bbox.corner(c).homogeneous()).head(3);
         float t = view.direction().dot(pos - view.origin());
-        nf[0] = std::min(nf[0], t);
-        nf[1] = std::max(nf[1], t);
+        if (t > 0) {
+            nf[0] = std::min(nf[0], t);
+            nf[1] = std::max(nf[1], t);
+        }
     };
 
     add(bbox3f_t::BottomLeftFloor);
@@ -45,12 +47,11 @@ renderer::init()
                                GL_VERTEX_SHADER);
     gbuffer_fs_ = shader_program::load(SHADER_ROOT + "gbuffer.frag",
                                GL_FRAGMENT_SHADER);
-
-    pipeline_ = std::make_shared<shader_pipeline>(gbuffer_vs_, gbuffer_fs_);
+    gbuffer_pass_ = std::make_shared<render_pass>(gbuffer_vs_, gbuffer_fs_);
 
     render_depth_shader_ = shader_program::load(
         SHADER_ROOT + "render_depth.frag", GL_FRAGMENT_SHADER);
-    render_depth_ =
+    render_depth_pass_ =
         std::make_shared<baldr::fullscreen_pass>(render_depth_shader_);
 
     visibility_shader_ = shader_program::load(
@@ -59,11 +60,7 @@ renderer::init()
         std::make_shared<baldr::fullscreen_pass>(visibility_shader_);
 
     // clear color
-    clear_color_ = vec3f_t(0.2f, 0.2f, 0.2f);
-    events_->connect<events::set_clear_color>([&](vec3f_t col) {
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        clear_color_ = col;
-    });
+    clear_color_ = vec4f_t(0.2f, 0.2f, 0.2f, 1.f);
 
     // add object
     events_->connect<events::add_object>([&](std::string name, std::shared_ptr<const renderable> obj) {
@@ -96,9 +93,9 @@ renderer::init()
         data.vertex_count = indices.size();
         if (data.vertex_count) {
             data.vbo = std::make_unique<data_buffer>(data_mat, GL_STATIC_DRAW);
-            data.ibo = std::make_unique<data_buffer>(indices, GL_STATIC_DRAW);
+            data.ibo = std::make_shared<data_buffer>(indices, GL_STATIC_DRAW);
             data.vao = std::make_unique<vertex_array>();
-            data.vao->set_index_buffer(*data.ibo);
+            data.vao->set_index_buffer(data.ibo);
             gbuffer_vs_->buffer_binding(*data.vao, "pos", "nrm", "fltcol", "uv", padding(sizeof(float))) = *data.vbo;
         }
 
@@ -141,24 +138,8 @@ renderer::init()
     auto reshape = [&](vec4i_t vp) {
         // textures
         gbuffer_depth_ = texture::depth32f(vp[2], vp[3]);
-        //visibility_mask_ = texture::rgba32f(vp[2], vp[3]);
-
-        // geometry pass
-        gbuffer_fs_->depth_attachment() = *gbuffer_depth_;
-
-        // visibility pass
-        visibility_shader_->sampler("depth_tex") = *gbuffer_depth_;
-        //visibility_shader_->output("mask") = *visibility_mask_;
-
-        // render depth pass
-        //render_depth_shader_->sampler("depth_tex") = *gbuffer_depth_;
-
-
-
-        //compose_tex_ = texture::rgba32f(vp[2], vp[3]);
-        //red_tex_ = texture::rgba32f(vp[2], vp[3]);
-        //gbuffer_fs_->output("color") = *compose_tex_;
-        //gbuffer_fs_->output("red") = *red_tex_;
+        visibility_depth_ = texture::depth32f(vp[2], vp[3]);
+        visibility_mask_ = texture::r32f(vp[2], vp[3]);
     };
     reshape(cam_->viewport());
     events_->connect<events::window_resize>(reshape);
@@ -201,51 +182,56 @@ renderer::render()
     visibility_shader_->uniform("near_size") = cam_->near_plane_size();
     visibility_shader_->uniform("width") = vp[2];
     visibility_shader_->uniform("height") = vp[3];
-    visibility_shader_->uniform("occlusion_threshold") = *occlusion_threshold_;
+    //visibility_shader_->uniform("occlusion_threshold") = *occlusion_threshold_;
     //render_depth_shader_->uniform("proj_mat") = pmat;
     //render_depth_shader_->uniform("near") = nf[0];
     //render_depth_shader_->uniform("far") = nf[1];
 
-    {
-        std::lock_guard lock(data_mutex_);
-        glClearColor(clear_color_[0], clear_color_[1], clear_color_[2], 1.f);
-    }
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    gbuffer_pass_->render(render_options{
+            .depth_attachment = gbuffer_depth_,
+            .clear_depth = 1.f
+        },
+        [&] (auto vs, auto fs) {
+            for (auto && [name, obj] : objects_) {
+                std::lock_guard<std::mutex> lock(data_mutex_);
+                if (obj.hidden) {
+                    continue;
+                }
 
-    // write to depth buffer only
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
+                vs->uniform("model_mat") = obj.transform;
+                vs->uniform("normal_mat") = cam_->normal_matrix() * obj.transform.template topLeftCorner<3,3>();
+                fs->uniform("use_texture") = static_cast<bool>(obj.texture);
+                fs->uniform("shade") = static_cast<bool>(obj.shaded);
+                if (obj.texture) {
+                    gbuffer_fs_->sampler("tex") = *obj.texture;
+                }
 
-    pipeline_->bind();
+                if (obj.vertex_count) {
+                    obj.vao->bind();
+                    glDrawElements(obj.mode, obj.vertex_count, GL_UNSIGNED_INT, 0);
+                }
+            }
+    });
 
-    for (auto && [name, obj] : objects_) {
-        std::lock_guard<std::mutex> lock(data_mutex_);
-        if (obj.hidden) {
-            continue;
-        }
 
-        gbuffer_vs_->uniform("model_mat") = obj.transform;
-        gbuffer_vs_->uniform("normal_mat") = cam_->normal_matrix() * obj.transform.topLeftCorner<3,3>();
-        gbuffer_fs_->uniform("use_texture") = static_cast<bool>(obj.texture);
-        gbuffer_fs_->uniform("shade") = static_cast<bool>(obj.shaded);
-        if (obj.texture) {
-            gbuffer_fs_->sampler("tex") = *obj.texture;
-        }
+    visibility_pass_->render(render_options{
+        .input = {{"depth_tex", gbuffer_depth_}},
+        .output = {{"mask", visibility_mask_}},
+        .depth_attachment = visibility_depth_,
+        .depth_write = true,
+        .clear_depth = 1.f,
+        .clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
+    });
+    glTextureBarrier();
 
-        gbuffer_fs_->current_framebuffer()->clear_depth(2.f);
-        gbuffer_fs_->current_framebuffer()->bind();
-        if (obj.vertex_count) {
-            obj.vao->bind();
-            glDrawElements(obj.mode, obj.vertex_count, GL_UNSIGNED_INT, 0);
-        }
+    std::vector<float> img(vp[3]*vp[2], 0.0f);
+    visibility_depth_->get(0, img.data());
+    pdebug("vis range: [{}, {}]", *std::min_element(img.begin(), img.end()), *std::max_element(img.begin(), img.end()));
 
-        //visibility_shader_->current_framebuffer()->bind();
-        backbuffer()->bind();
-        visibility_pass_->render(vp);
-
-        //backbuffer()->bind();
-        //render_depth_->render(vp);
-    }
+    render_depth_pass_->render(render_options{
+        .input = {{"tex", visibility_mask_}},
+        .clear_color = *clear_color_
+    });
 }
 
 }  // namespace graphene::detail

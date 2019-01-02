@@ -1,6 +1,7 @@
 #version 460
 
-layout(location=0) uniform sampler2D depth_tex;
+/*layout(location=0) uniform sampler2D depth_tex;*/
+layout(location=0) uniform sampler2D tex;
 /*layout(location=1) uniform mat4 proj_mat;*/
 /*layout(location=2) uniform float near;*/
 /*layout(location=3) uniform float far;*/
@@ -43,6 +44,7 @@ linearize_depth(float depth) {
 }
 
 void main() {
-    float depth = texture(depth_tex, uv).r;
-    color = depth == 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : color_map(linearize_depth(depth));
+    /*float depth = texture(depth_tex, uv).r;*/
+    /*color = depth == 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : color_map(linearize_depth(depth));*/
+    color = color_map(texture(tex, uv).r);
 }

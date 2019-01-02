@@ -204,17 +204,17 @@ application::impl::start()
 
             imgui::init_frame();
 
-            vis_window.render();
-            render_ui_();
+            //vis_window.render();
+            //render_ui_();
 
-            ImGui::Render();
+            //ImGui::Render();
             glfwMakeContextCurrent(window_);
 
             renderer.render();
 
-            imgui::draw_frame();
+            //imgui::draw_frame();
 
-            glfwMakeContextCurrent(window_);
+            //glfwMakeContextCurrent(window_);
             glfwSwapBuffers(window_);
         }
 
