@@ -2,9 +2,9 @@
 
 /*layout(location=0) uniform sampler2D depth_tex;*/
 layout(location=0) uniform sampler2D tex;
-/*layout(location=1) uniform mat4 proj_mat;*/
-/*layout(location=2) uniform float near;*/
-/*layout(location=3) uniform float far;*/
+layout(location=1) uniform mat4 proj_mat;
+layout(location=2) uniform float near;
+layout(location=3) uniform float far;
 
 layout(location=0) in vec2 uv;
 
@@ -33,14 +33,13 @@ color_map(float value) {
 
 float
 linearize_depth(float depth) {
-    return depth;
     // [0,1] to [-1,1]
-    /*float z = 2.0*depth - 1.0;*/
-    /*// NDC to eye*/
-    /*z = proj_mat[3][2] / (proj_mat[2][3] * z - proj_mat[2][2]);*/
-    /*// z is now in [-near, -far], negate and map to [0, 1]*/
-    /*z = (-z - near) / (far-near);*/
-    /*return z;*/
+    float z = 2.0*depth - 1.0;
+    // NDC to eye
+    z = proj_mat[3][2] / (proj_mat[2][3] * z - proj_mat[2][2]);
+    // z is now in [-near, -far], negate and map to [0, 1]
+    z = (-z - near) / (far-near);
+    return z;
 }
 
 void main() {
@@ -50,5 +49,5 @@ void main() {
     if (depth >= 1.0) {
         discard;
     }
-    color = color_map(depth);
+    color = color_map(linearize_depth(depth));
 }

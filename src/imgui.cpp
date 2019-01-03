@@ -355,24 +355,10 @@ draw_frame()
         0.f, 0.f, -1.f, 0.f,
         0.f, 0.f, 0.f, 1.f;
 
-    //const float ortho_projection[4][4] = {
-        //{2.0f / (R - L), 0.0f, 0.0f, 0.0f},
-        //{0.0f, 2.0f / (T - B), 0.0f, 0.0f},
-        //{0.0f, 0.0f, -1.0f, 0.0f},
-        //{(R + L) / (L - R), (T + B) / (B - T), 0.0f, 1.0f},
-    //};
-    //glUseProgram(0);
     g_pipeline->bind();
     glProgramUniform1i(g_frag_shader->program(), g_frag_shader->sampler("tex").location, 0);
     g_vert_shader->uniform("mvp") = ortho_proj;
-//#ifdef GL_SAMPLER_BINDING
-//    glBindSampler(0, 0);  // We use combined texture/sampler state. Applications
-//                          // using GL 3.3 may set that otherwise.
-//#endif
-    // Recreate the VAO every time
-    // (This is to easily allow multiple GL contexts. VAO are not shared among
-    // GL contexts, and we don't track creation/deletion of windows so we don't
-    // have an obvious key to use to cache them.)
+
     GLuint vao_handle = 0;
     glGenVertexArrays(1, &vao_handle);
     glBindVertexArray(vao_handle);
@@ -434,22 +420,10 @@ draw_frame()
             idx_buffer_offset += pcmd->ElemCount;
         }
     }
-    glDeleteVertexArrays(1, &vao_handle);
 
+    glDeleteVertexArrays(1, &vao_handle);
     glDisable(GL_BLEND);
     glDisable(GL_SCISSOR_TEST);
-
-    // Restore modified GL state
-//    glUseProgram(0);
-//    glBindTexture(GL_TEXTURE_2D, last_texture);
-//#ifdef GL_SAMPLER_BINDING
-//    glBindSampler(0, last_sampler);
-//#endif
-//    glActiveTexture(last_active_texture);
-//    glBindVertexArray(last_vertex_array);
-//    glBindBuffer(GL_ARRAY_BUFFER, last_array_buffer);
-//    glViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2],
-//               (GLsizei)last_viewport[3]);
 }
 
 namespace detail {

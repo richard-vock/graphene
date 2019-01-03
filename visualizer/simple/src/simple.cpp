@@ -17,14 +17,14 @@ main(int argc, char const** argv)
     opt_input->required()->check(CLI::ExistingFile);
     CLI11_PARSE(app, argc, argv);
 
-    mat4f_t scale = mat4f_t::Identity();
-    scale.topLeftCorner<3,3>() *= 10.f;
+    //mat4f_t scale = mat4f_t::Identity();
+    //scale.topLeftCorner<3,3>() *= 10.f;
     std::vector<std::shared_ptr<renderable>> objects;
     for (const auto& input_file : input_files) {
         //auto meshes = assimp::load_meshes(input_file, true);
         //objects.insert(objects.end(), meshes.begin(), meshes.end());
         auto cloud = pcl::load_cloud(input_file, vec4f_t::Ones());
-        cloud->move(scale);
+        //cloud->move(scale);
         objects.push_back(cloud);
     }
 

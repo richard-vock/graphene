@@ -33,6 +33,7 @@ add_library(graphene
     "src/integer.cpp"
     "src/lines.cpp"
     "src/orbit_camera_model.cpp"
+    "src/point_visibility.cpp"
     "src/range.cpp"
     "src/real.cpp"
     "src/renderer.cpp"

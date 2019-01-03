@@ -6,10 +6,20 @@
 #include <graphene/events.hpp>
 #include <graphene/shared.hpp>
 
+#include "point_visibility.hpp"
+
 namespace graphene::detail {
 
 class renderer
 {
+public:
+    struct parameters {
+        shared<float> occlusion_threshold = 1.f;
+        shared<bool> fill = false;
+        shared<bool> show_normals = false;
+        shared<bool> debug = false;
+    };
+
 protected:
     struct render_data
     {
@@ -26,7 +36,7 @@ protected:
     };
 
 public:
-    renderer(std::shared_ptr<event_manager> events, std::shared_ptr<camera> cam, shared<float> occlusion_threshold);
+    renderer(std::shared_ptr<event_manager> events, std::shared_ptr<camera> cam, const parameters& params);
 
     virtual ~renderer();
 
@@ -40,26 +50,21 @@ protected:
     std::shared_ptr<event_manager> events_;
     std::shared_ptr<camera> cam_;
 
-    std::shared_ptr<baldr::shader_program> gbuffer_vs_;
-    std::shared_ptr<baldr::shader_program> gbuffer_fs_;
-    std::shared_ptr<baldr::render_pass> gbuffer_pass_;
+    std::shared_ptr<baldr::shader_program> geometry_vs_;
+    std::shared_ptr<baldr::shader_program> geometry_fs_;
+    std::shared_ptr<baldr::render_pass> geometry_pass_;
 
-    std::shared_ptr<baldr::texture> gbuffer_depth_;
+    std::shared_ptr<baldr::texture> geometry_depth_;
     std::shared_ptr<baldr::shader_program> render_depth_shader_;
     std::shared_ptr<baldr::fullscreen_pass> render_depth_pass_;
 
-    std::shared_ptr<baldr::texture> visibility_map_;
-    std::shared_ptr<baldr::texture> visibility_map_pp_;
-    std::shared_ptr<baldr::shader_program> visibility_shader_;
-    std::shared_ptr<baldr::shader_program> anisotropic_fill_shader_;
-    std::shared_ptr<baldr::fullscreen_pass> visibility_pass_;
-    std::shared_ptr<baldr::fullscreen_pass> anisotropic_fill_pass_;
+    std::shared_ptr<point_visibility> point_visibility_;
 
     std::mutex data_mutex_;
     std::map<std::string, render_data> objects_;
     shared<vec4f_t> clear_color_;
 
-    shared<float> occlusion_threshold_;
+    parameters params_;
 };
 
 }  // namespace graphene::detail

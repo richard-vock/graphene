@@ -13,6 +13,7 @@ using namespace baldr;
 #include <graphene/camera.hpp>
 #include <graphene/orbit_camera_model.hpp>
 #include <graphene/window.hpp>
+#include <graphene/boolean.hpp>
 #include <graphene/range.hpp>
 #include <graphene/section.hpp>
 
@@ -174,14 +175,14 @@ application::impl::start()
                                 params.font.size, events_);
 
         auto cam = camera::create<orbit_camera_model>(
-            looking_at{ vec3f_t(5.f, -20.f, 5.f), vec3f_t(0.f, 0.f, 0.f) },
+            looking_at{ vec3f_t(0.f, -20.f, 0.f), vec3f_t(0.f, 0.f, 0.f) },
             events_,
             vec4i_t(0, 0, params.window_size[0], params.window_size[1]),
             60.f
         );
 
-        shared<float> occlusion_threshold = 0.05f;
-        detail::renderer renderer(events_, cam, occlusion_threshold);
+        detail::renderer::parameters params;
+        detail::renderer renderer(events_, cam, params);
         init_();
 
         // clang-format off
@@ -189,7 +190,10 @@ application::impl::start()
             "graphene",
             property::section(
                 "Rendering",
-                property::range("Occlusion Threshold", occlusion_threshold, bounds{0.f, 1.f})
+                property::range("Occlusion Threshold", params.occlusion_threshold, bounds{0.f, 1.f}),
+                property::boolean("Anisotropic Fill", params.fill),
+                property::boolean("Show Normals", params.show_normals),
+                property::boolean("debug", params.debug)
             )
         );
         // clang-format on

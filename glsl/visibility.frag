@@ -101,6 +101,6 @@ occlusion(ivec2 center, float depth) {
 void main() {
     ivec2 center = ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y));
     float depth = texelFetch(depth_tex, center, 0).r;
-    map.r = occlusion(center, depth) > occlusion_threshold ? 1.0 : 0.0;
-    map.g = occlusion(center, depth) > occlusion_threshold ? depth : 1.0;
+    map.r = occlusion(center, depth) > occlusion_threshold ? 0.0 : 1.0;
+    map.g = occlusion(center, depth) > occlusion_threshold ? 1.0 : depth;
 }

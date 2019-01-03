@@ -3,7 +3,6 @@
 layout(location=0) uniform sampler2D input_map;
 layout(location=1) uniform int width;
 layout(location=2) uniform int height;
-layout(location=3) uniform float delta;
 
 layout(location=0) in vec2 uv;
 
@@ -22,9 +21,10 @@ void main() {
     float visibility = inp.r;
     float depth = inp.g;
     if (visibility < 0.5) {
-        // empty pixel
-        bool valid = inp.g < 1.0;
-        depth = valid ? update_depth(center, inp.g) : median_depth(center);
+        // if depth < 1.0 we have valid pixel and update depth
+        // otherwise initialize with median neighbor depth
+        depth =
+            inp.g < 1.0 ? update_depth(center, depth) : median_depth(center);
     }
 
     output_map.r = visibility;
@@ -83,7 +83,8 @@ median_depth(ivec2 center) {
 
 float
 update_depth(ivec2 center, float depth) {
-    float weighted_sum = 0.0;
+    float weighted_depth = 0.0;
+    float weight_sum = 0.0;
     for (int x = -1; x <= 1; ++x) {
         int i = center.x + x;
         if (i < 0 || i >= width) {
@@ -91,18 +92,23 @@ update_depth(ivec2 center, float depth) {
         }
         for (int y = -1; y <= 1; ++y) {
             int j = center.y + y;
-            if (j < 0 || j >= height || (x == 0 && y == 0)) {
+            if (j < 0 || j >= height) {
                 continue;
             }
 
+            //vec2 n_inp = texelFetch(input_map, ivec2(i, j), 0).rg;
+            //bool n_visible = n_inp.r > 0.5;
             float n_depth = texelFetch(input_map, ivec2(i, j), 0).g;
+
             if (n_depth < 1.0) {
                 float px_factor = 1.0 - 0.5 * float(abs(x) + abs(y));
-                float depth_factor = (1.0 - min(1.0, abs(depth - n_depth) / delta));
-                weighted_sum += px_factor * depth_factor * n_depth;
+                float depth_factor = 1.0 - min(1.0, abs(depth - n_depth));
+                float weight = px_factor * depth_factor;
+                weighted_depth += weight * n_depth;
+                weight_sum += weight;
             }
         }
     }
 
-    return weighted_sum;
+    return weighted_depth / weight_sum;
 }

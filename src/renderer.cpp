@@ -12,10 +12,8 @@ correct_near_far(const bbox3f_t& bbox, const ray_t& view, const mat4f_t& transfo
     auto add = [&] (bbox3f_t::CornerType c) {
         vec3f_t pos = (transform * bbox.corner(c).homogeneous()).head(3);
         float t = view.direction().dot(pos - view.origin());
-        if (t > 0) {
-            nf[0] = std::min(nf[0], t);
-            nf[1] = std::max(nf[1], t);
-        }
+        nf[0] = std::min(nf[0], t);
+        nf[1] = std::max(nf[1], t);
     };
 
     add(bbox3f_t::BottomLeftFloor);
@@ -32,8 +30,10 @@ correct_near_far(const bbox3f_t& bbox, const ray_t& view, const mat4f_t& transfo
 
 renderer::renderer(std::shared_ptr<event_manager> events,
                    std::shared_ptr<camera> cam,
-                   shared<float> occlusion_threshold)
-    : events_(events), cam_(cam), occlusion_threshold_(occlusion_threshold)
+                   const parameters& params)
+    : events_(events),
+      cam_(cam),
+      params_(params)
 {
     init();
 }
@@ -43,25 +43,21 @@ renderer::~renderer() {}
 void
 renderer::init()
 {
-    gbuffer_vs_ = shader_program::load(SHADER_ROOT + "gbuffer.vert",
+    geometry_vs_ = shader_program::load(SHADER_ROOT + "geometry.vert",
                                GL_VERTEX_SHADER);
-    gbuffer_fs_ = shader_program::load(SHADER_ROOT + "gbuffer.frag",
+    geometry_fs_ = shader_program::load(SHADER_ROOT + "geometry.frag",
                                GL_FRAGMENT_SHADER);
-    gbuffer_pass_ = std::make_shared<render_pass>(gbuffer_vs_, gbuffer_fs_);
+    geometry_pass_ = std::make_shared<render_pass>(geometry_vs_, geometry_fs_);
 
     render_depth_shader_ = shader_program::load(
         SHADER_ROOT + "render_depth.frag", GL_FRAGMENT_SHADER);
     render_depth_pass_ =
         std::make_shared<baldr::fullscreen_pass>(render_depth_shader_);
 
-    visibility_shader_ = shader_program::load(
-        SHADER_ROOT + "visibility.frag", GL_FRAGMENT_SHADER);
-    visibility_pass_ =
-        std::make_shared<baldr::fullscreen_pass>(visibility_shader_);
-    anisotropic_fill_shader_ = shader_program::load(
-        SHADER_ROOT + "anisotropic_fill.frag", GL_FRAGMENT_SHADER);
-    anisotropic_fill_pass_ =
-        std::make_shared<baldr::fullscreen_pass>(anisotropic_fill_shader_);
+    point_visibility_ = std::make_shared<point_visibility>(point_visibility::parameters{
+        .occlusion_threshold = params_.occlusion_threshold,
+        .fill = params_.fill
+    });
 
     // clear color
     clear_color_ = vec4f_t(0.3f, 0.3f, 0.3f, 1.f);
@@ -100,7 +96,7 @@ renderer::init()
             data.ibo = std::make_shared<data_buffer>(indices, GL_STATIC_DRAW);
             data.vao = std::make_unique<vertex_array>();
             data.vao->set_index_buffer(data.ibo);
-            gbuffer_vs_->buffer_binding(*data.vao, "pos", "nrm", "fltcol", "uv", padding(sizeof(float))) = *data.vbo;
+            geometry_vs_->buffer_binding(*data.vao, "pos", "nrm", "fltcol", "uv", padding(sizeof(float))) = *data.vbo;
         }
 
         if (auto tex = obj->texture()) {
@@ -141,9 +137,8 @@ renderer::init()
     // viewport dependent initialization
     auto reshape = [&](vec4i_t vp) {
         // textures
-        gbuffer_depth_ = texture::depth32f(vp[2], vp[3]);
-        visibility_map_ = texture::rg32f(vp[2], vp[3]);
-        visibility_map_pp_ = texture::rg32f(vp[2], vp[3]);
+        geometry_depth_ = texture::depth32f(vp[2], vp[3]);
+        point_visibility_->reshape(vp, geometry_depth_);
     };
     reshape(cam_->viewport());
     events_->connect<events::window_resize>(reshape);
@@ -153,20 +148,21 @@ void
 renderer::render()
 {
     mat4f_t vmat = cam_->view_matrix();
-    gbuffer_vs_->uniform("view_mat") = vmat;
-    gbuffer_fs_->uniform("view_mat") = vmat;
+    geometry_vs_->uniform("view_mat") = vmat;
+    geometry_fs_->uniform("view_mat") = vmat;
 
     // estimate near/far values using object bounding boxes
-    vec2f_t nf(std::numeric_limits<float>::max(), 0.f);
+    vec2f_t nf(std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest());
     if (objects_.size()) {
         ray_t view(cam_->position(), cam_->forward());
         for (auto && [name, obj] : objects_) {
             nf = correct_near_far(obj.bbox, view, obj.transform, nf);
         }
-        nf[0] -= 0.01f;
-        nf[1] += 0.01f;
+        //nf[0] -= 0.01f;
+        //nf[1] += 0.01f;
         if (nf[0] < 0.001f) {
             nf[0] = 0.001f;
+        } else {
         }
         if (nf[1] <= nf[0]) {
             nf[1] = nf[0] + 0.001f;
@@ -181,20 +177,13 @@ renderer::render()
     vec4i_t vp = cam_->viewport();
     glViewport(vp[0], vp[1], vp[2], vp[3]);
 
-    gbuffer_vs_->uniform("proj_mat") = pmat;
-    constexpr uint32_t kernel_size = 9;
-    visibility_shader_->uniform("proj_mat") = pmat;
-    visibility_shader_->uniform("near_size") = cam_->near_plane_size();
-    visibility_shader_->uniform("width") = vp[2];
-    visibility_shader_->uniform("height") = vp[3];
-    visibility_shader_->uniform("occlusion_threshold") = *occlusion_threshold_;
-    visibility_shader_->uniform("kernel_size") = kernel_size;
-    anisotropic_fill_shader_->uniform("width") = vp[2];
-    anisotropic_fill_shader_->uniform("height") = vp[3];
-    anisotropic_fill_shader_->uniform("delta") = 1.f;
+    geometry_vs_->uniform("proj_mat") = pmat;
+    render_depth_shader_->uniform("proj_mat") = pmat;
+    render_depth_shader_->uniform("near") = nf[0];
+    render_depth_shader_->uniform("far") = nf[1];
 
-    gbuffer_pass_->render(render_options{
-            .depth_attachment = gbuffer_depth_,
+    geometry_pass_->render(render_options{
+            .depth_attachment = geometry_depth_,
             .clear_depth = 1.f
         },
         [&] (auto vs, auto fs) {
@@ -209,7 +198,7 @@ renderer::render()
                 fs->uniform("use_texture") = static_cast<bool>(obj.texture);
                 fs->uniform("shade") = static_cast<bool>(obj.shaded);
                 if (obj.texture) {
-                    gbuffer_fs_->sampler("tex") = *obj.texture;
+                    geometry_fs_->sampler("tex") = *obj.texture;
                 }
 
                 if (obj.vertex_count) {
@@ -219,33 +208,10 @@ renderer::render()
             }
     });
 
-
-    visibility_pass_->render(render_options{
-        .input = {{"depth_tex", gbuffer_depth_}},
-        .output = {{"map", visibility_map_}},
-        .depth_write = false,
-        .clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
-    });
-
-    //for (uint32_t i = 0; i < 2*kernel_size; ++i) {
-        //// we necessarily have an even iteration count
-        //// the final result will therefore be in the original
-        //// input map (visibility_map_)
-        //std::shared_ptr<texture> in, out;
-        //anisotropic_fill_pass_->render(render_options{
-            //.input = {{"input_map", (i % 2 == 0) ? visibility_map_ : visibility_map_pp_ }},
-            //.output = {{"output_map", (i % 2 == 0) ? visibility_map_pp_ : visibility_map_}},
-            //.depth_write = false,
-            //.clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
-        //});
-    //}
-
-    //std::vector<float> img(vp[3]*vp[2], 0.0f);
-    //visibility_depth_->get(0, img.data());
-    //pdebug("vis range: [{}, {}]", *std::min_element(img.begin(), img.end()), *std::max_element(img.begin(), img.end()));
+    point_visibility_->render(pmat, vp, cam_->near_plane_size());
 
     render_depth_pass_->render(render_options{
-        .input = {{"tex", visibility_map_}},
+        .input = {{"tex", point_visibility_->output()}},
         .clear_color = *clear_color_
     });
 }
