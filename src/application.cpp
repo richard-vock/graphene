@@ -14,6 +14,7 @@ using namespace baldr;
 #include <graphene/orbit_camera_model.hpp>
 #include <graphene/window.hpp>
 #include <graphene/boolean.hpp>
+#include <graphene/integer.hpp>
 #include <graphene/range.hpp>
 #include <graphene/section.hpp>
 
@@ -191,8 +192,11 @@ application::impl::start()
             property::section(
                 "Rendering",
                 property::range("Occlusion Threshold", params.occlusion_threshold, bounds{0.f, 1.f}),
+                property::range("Bilateral Filter Sigma", params.sigma_depth, bounds{0.001f, 0.05f}),
                 property::boolean("Anisotropic Fill", params.fill),
+                property::boolean("Skip Bilateral Filter", params.skip_bilateral_filter),
                 property::boolean("Show Normals", params.show_normals),
+                property::integer("debug int", params.debug_int),
                 property::boolean("debug", params.debug)
             )
         );

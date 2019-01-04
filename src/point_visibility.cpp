@@ -4,7 +4,7 @@ using namespace baldr;
 
 namespace graphene::detail {
 
-constexpr uint32_t kernel_size = 9;
+constexpr uint32_t kernel_size = 13;
 
 point_visibility::point_visibility(const parameters& params) : params_(params) {
     visibility_shader_ = shader_program::load(
@@ -21,13 +21,14 @@ point_visibility::~point_visibility() {
 }
 
 void
-point_visibility::render(const mat4f_t& projection_matrix, const vec4i_t& viewport, const vec2f_t& near_plane_size) {
+point_visibility::render(const mat4f_t& projection_matrix, const vec4i_t& viewport, const vec2f_t& near_plane_size, const vec2f_t& nf) {
     visibility_shader_->uniform("proj_mat") = projection_matrix;
     visibility_shader_->uniform("near_size") = near_plane_size;
     visibility_shader_->uniform("width") = viewport[2];
     visibility_shader_->uniform("height") = viewport[3];
     visibility_shader_->uniform("occlusion_threshold") = params_.occlusion_threshold;
     visibility_shader_->uniform("kernel_size") = kernel_size;
+    visibility_shader_->uniform("nf") = nf;
     anisotropic_fill_shader_->uniform("width") = viewport[2];
     anisotropic_fill_shader_->uniform("height") = viewport[3];
 

@@ -7,6 +7,7 @@ layout(location=3) uniform int width;
 layout(location=4) uniform int height;
 layout(location=5) uniform float occlusion_threshold;
 layout(location=6) uniform uint kernel_size;
+layout(location=7) uniform vec2 nf;
 
 layout(location=0) in vec2 uv;
 
@@ -98,9 +99,19 @@ occlusion(ivec2 center, float depth) {
     return occlusion / 8;
 }
 
+float
+linearize(float depth) {
+    // [0,1] to [-1,1]
+    float z = 2.0*depth - 1.0;
+    // NDC to eye; z in [-near, -far]
+    z = -proj_mat[3][2] / (proj_mat[2][3] * z - proj_mat[2][2]);
+    return (z - nf.x) / (nf.y-nf.x);
+}
+
 void main() {
     ivec2 center = ivec2(int(gl_FragCoord.x), int(gl_FragCoord.y));
     float depth = texelFetch(depth_tex, center, 0).r;
+    float lin_depth = linearize(depth);
     map.r = occlusion(center, depth) > occlusion_threshold ? 0.0 : 1.0;
-    map.g = occlusion(center, depth) > occlusion_threshold ? 1.0 : depth;
+    map.g = occlusion(center, depth) > occlusion_threshold ? 1.0 : lin_depth;
 }

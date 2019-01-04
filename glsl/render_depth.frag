@@ -1,10 +1,12 @@
 #version 460
 
-/*layout(location=0) uniform sampler2D depth_tex;*/
-layout(location=0) uniform sampler2D tex;
+layout(location=0) uniform sampler2D depth_map;
 layout(location=1) uniform mat4 proj_mat;
-layout(location=2) uniform float near;
-layout(location=3) uniform float far;
+layout(location=2) uniform int width;
+layout(location=3) uniform int height;
+layout(location=4) uniform int level;
+//layout(location=2) uniform float near;
+//layout(location=3) uniform float far;
 
 layout(location=0) in vec2 uv;
 
@@ -31,23 +33,23 @@ color_map(float value) {
     return vec4((1.0 - interp) * map_colors[lower] + interp * map_colors[upper], 1.0);
 }
 
-float
-linearize_depth(float depth) {
-    // [0,1] to [-1,1]
-    float z = 2.0*depth - 1.0;
-    // NDC to eye
-    z = proj_mat[3][2] / (proj_mat[2][3] * z - proj_mat[2][2]);
-    // z is now in [-near, -far], negate and map to [0, 1]
-    z = (-z - near) / (far-near);
-    return z;
-}
+//float
+//linearize_depth(float depth) {
+//    // [0,1] to [-1,1]
+//    float z = 2.0*depth - 1.0;
+//    // NDC to eye
+//    z = proj_mat[3][2] / (proj_mat[2][3] * z - proj_mat[2][2]);
+//    // z is now in [-near, -far], negate and map to [0, 1]
+//    z = (-z - near) / (far-near);
+//    return z;
+//}
 
 void main() {
-    /*float depth = texture(depth_tex, uv).r;*/
-    /*color = depth == 1.0 ? vec4(0.0, 0.0, 0.0, 1.0) : color_map(linearize_depth(depth));*/
-    float depth = texture(tex, uv).g;
-    if (depth >= 1.0) {
+    vec2 size = vec2(width, height) / pow(2,level);
+    ivec2 px = ivec2(uv * (size - vec2(1.0)));
+    float depth = texelFetch(depth_map, px, level).r;
+    if (depth >= 0.99999) {
         discard;
     }
-    color = color_map(linearize_depth(depth));
+    color = color_map(depth);
 }

@@ -18,7 +18,7 @@ public:
 
     virtual ~point_visibility();
 
-    void render(const mat4f_t& projection_matrix, const vec4i_t& viewport, const vec2f_t& near_plane_size);
+    void render(const mat4f_t& projection_matrix, const vec4i_t& viewport, const vec2f_t& near_plane_size, const vec2f_t& nf);
 
     void reshape(const vec4i_t& vp, std::shared_ptr<baldr::texture> input_depth);
 

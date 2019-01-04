@@ -59,6 +59,26 @@ renderer::init()
         .fill = params_.fill
     });
 
+    gbuffer_shader_ = shader_program::load(
+        SHADER_ROOT + "gbuffer.frag", GL_FRAGMENT_SHADER);
+    gbuffer_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(gbuffer_shader_);
+
+    normal_shader_ = shader_program::load(
+        SHADER_ROOT + "normal_shader.frag", GL_FRAGMENT_SHADER);
+    normal_shader_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(normal_shader_);
+
+    bilateral_filter_shader_ = shader_program::load(
+        SHADER_ROOT + "bilateral_filter.frag", GL_FRAGMENT_SHADER);
+    bilateral_filter_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(bilateral_filter_shader_);
+
+    build_pyramid_shader_ = shader_program::load(
+        SHADER_ROOT + "build_pyramid.frag", GL_FRAGMENT_SHADER);
+    build_pyramid_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(build_pyramid_shader_);
+
     // clear color
     clear_color_ = vec4f_t(0.3f, 0.3f, 0.3f, 1.f);
 
@@ -138,7 +158,17 @@ renderer::init()
     auto reshape = [&](vec4i_t vp) {
         // textures
         geometry_depth_ = texture::depth32f(vp[2], vp[3]);
+        depth_ = texture::r32f(vp[2], vp[3]);
+        gbuffer_ = texture::rgba32f(vp[2], vp[3]);
         point_visibility_->reshape(vp, geometry_depth_);
+
+        max_level_ = std::log2(vp.tail(2).minCoeff());
+        pyramid_ = std::make_shared<texture>(vp[2], vp[3], texture_specification {
+            .format = GL_RED,
+            .internal_format = GL_R32F,
+            .filter = {GL_NEAREST_MIPMAP_NEAREST, GL_NEAREST},
+            .levels = max_level_+1u
+        });
     };
     reshape(cam_->viewport());
     events_->connect<events::window_resize>(reshape);
@@ -178,9 +208,9 @@ renderer::render()
     glViewport(vp[0], vp[1], vp[2], vp[3]);
 
     geometry_vs_->uniform("proj_mat") = pmat;
-    render_depth_shader_->uniform("proj_mat") = pmat;
-    render_depth_shader_->uniform("near") = nf[0];
-    render_depth_shader_->uniform("far") = nf[1];
+    //render_depth_shader_->uniform("proj_mat") = pmat;
+    //render_depth_shader_->uniform("near") = nf[0];
+    //render_depth_shader_->uniform("far") = nf[1];
 
     geometry_pass_->render(render_options{
             .depth_attachment = geometry_depth_,
@@ -208,12 +238,65 @@ renderer::render()
             }
     });
 
-    point_visibility_->render(pmat, vp, cam_->near_plane_size());
+    point_visibility_->render(pmat, vp, cam_->near_plane_size(), nf);
 
+    bilateral_filter_shader_->uniform("skip") = params_.skip_bilateral_filter;
+    bilateral_filter_shader_->uniform("width") = vp[2];
+    bilateral_filter_shader_->uniform("height") = vp[3];
+    //bilateral_filter_shader_->uniform("sigma_depth") = params_.sigma_depth;
+    bilateral_filter_pass_->render(render_options{
+        .input = {{"visibility_map", point_visibility_->output()}},
+        .output = {{"out_depth", pyramid_}},
+    });
+
+    mat3f_t inv_view = vmat.topLeftCorner<3,3>().transpose();
+    //gbuffer_shader_->uniform("proj_mat") = pmat;
+    gbuffer_shader_->uniform("nf") = nf;
+    gbuffer_shader_->uniform("width") = vp[2];
+    gbuffer_shader_->uniform("height") = vp[3];
+    gbuffer_shader_->uniform("near_size") = cam_->near_plane_size();
+    gbuffer_shader_->uniform("inv_view_mat") = inv_view;
+    gbuffer_pass_->render(render_options{
+        .input = {{"depth_map", pyramid_}},
+        .output = {{"gbuffer", gbuffer_}},
+        .clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
+    });
+
+    if (params_.show_normals) {
+        normal_shader_pass_->render(render_options{
+            .input = {{"gbuffer", gbuffer_}},
+            .clear_color = *clear_color_
+        });
+        return;
+    }
+
+    for (int level = 1; level <= max_level_; ++level) {
+        int width = std::max(1, vp[2] / static_cast<int>(std::pow(2.f, static_cast<float>(level))));
+        int height = std::max(vp[2] / static_cast<int>(std::pow(2.f, static_cast<float>(level))));
+        glViewport(vp[0], vp[1], width, height);
+        pyramid_->set_max_level(level-1);
+        build_pyramid_shader_->uniform("width") = width;
+        build_pyramid_shader_->uniform("height") = height;
+        build_pyramid_shader_->uniform("level") = level;
+        build_pyramid_pass_->render(render_options{
+            .input = {{"depth_map", pyramid_}},
+            .output = {{"depth_map", texture_image{pyramid_, level}}},
+            .depth_mask = false
+        });
+        glTextureBarrier();
+    }
+    glViewport(vp[0], vp[1], vp[2], vp[3]);
+    int level = std::max(0, std::min(*params_.debug_int, static_cast<int>(max_level_)));
+    pyramid_->generate_mipmap();
+
+    render_depth_shader_->uniform("width") = vp[2];
+    render_depth_shader_->uniform("height") = vp[3];
+    render_depth_shader_->uniform("level") = level;
     render_depth_pass_->render(render_options{
-        .input = {{"tex", point_visibility_->output()}},
+        .input = {{"depth_map", pyramid_}},
         .clear_color = *clear_color_
     });
+
 }
 
 }  // namespace graphene::detail

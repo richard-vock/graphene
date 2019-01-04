@@ -14,10 +14,13 @@ class renderer
 {
 public:
     struct parameters {
-        shared<float> occlusion_threshold = 1.f;
-        shared<bool> fill = false;
+        shared<float> occlusion_threshold = 0.95f;
+        shared<float> sigma_depth = 0.03;
+        shared<bool> fill = true;
+        shared<bool> skip_bilateral_filter = false;
         shared<bool> show_normals = false;
         shared<bool> debug = false;
+        shared<int> debug_int = 0;
     };
 
 protected:
@@ -60,11 +63,27 @@ protected:
 
     std::shared_ptr<point_visibility> point_visibility_;
 
+    std::shared_ptr<baldr::shader_program> gbuffer_shader_;
+    std::shared_ptr<baldr::fullscreen_pass> gbuffer_pass_;
+    std::shared_ptr<baldr::texture> gbuffer_;
+
+    std::shared_ptr<baldr::texture> depth_;
+    std::shared_ptr<baldr::shader_program> bilateral_filter_shader_;
+    std::shared_ptr<baldr::fullscreen_pass> bilateral_filter_pass_;
+
+    std::shared_ptr<baldr::shader_program> normal_shader_;
+    std::shared_ptr<baldr::fullscreen_pass> normal_shader_pass_;
+
+    std::shared_ptr<baldr::texture> pyramid_;
+
     std::mutex data_mutex_;
     std::map<std::string, render_data> objects_;
     shared<vec4f_t> clear_color_;
 
+    uint32_t max_level_;
     parameters params_;
+    std::shared_ptr<baldr::shader_program> build_pyramid_shader_;
+    std::shared_ptr<baldr::fullscreen_pass> build_pyramid_pass_;
 };
 
 }  // namespace graphene::detail
