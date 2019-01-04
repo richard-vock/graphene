@@ -46,7 +46,7 @@ color_map(float value) {
 
 void main() {
     vec2 size = vec2(width, height) / pow(2,level);
-    ivec2 px = ivec2(uv * (size - vec2(1.0)));
+    ivec2 px = clamp(ivec2(uv * size), ivec2(0,0), ivec2(size.x-1, size.y-1));
     float depth = texelFetch(depth_map, px, level).r;
     if (depth >= 0.99999) {
         discard;

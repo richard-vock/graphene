@@ -7,6 +7,7 @@
 #include <graphene/shared.hpp>
 
 #include "point_visibility.hpp"
+#include "texture_pyramid.hpp"
 
 namespace graphene::detail {
 
@@ -74,16 +75,14 @@ protected:
     std::shared_ptr<baldr::shader_program> normal_shader_;
     std::shared_ptr<baldr::fullscreen_pass> normal_shader_pass_;
 
-    std::shared_ptr<baldr::texture> pyramid_;
+    std::shared_ptr<baldr::shader_program> build_pyramid_shader_;
+    std::shared_ptr<texture_pyramid> pyramid_;
 
     std::mutex data_mutex_;
     std::map<std::string, render_data> objects_;
     shared<vec4f_t> clear_color_;
 
-    uint32_t max_level_;
     parameters params_;
-    std::shared_ptr<baldr::shader_program> build_pyramid_shader_;
-    std::shared_ptr<baldr::fullscreen_pass> build_pyramid_pass_;
 };
 
 }  // namespace graphene::detail

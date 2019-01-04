@@ -41,6 +41,7 @@ add_library(graphene
     "src/rgba.cpp"
     "src/section.cpp"
     "src/text.cpp"
+    "src/texture_pyramid.cpp"
     "src/window.cpp"
 )
 target_compile_features(graphene PUBLIC cxx_std_17)
