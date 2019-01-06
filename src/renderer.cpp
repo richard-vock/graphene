@@ -1,15 +1,17 @@
 #include <impl/renderer.hpp>
 
-#include <png++/png.hpp>
 #include <numeric>
+#include <png++/png.hpp>
 
 using namespace baldr;
 
 namespace graphene::detail {
 
 vec2f_t
-correct_near_far(const bbox3f_t& bbox, const ray_t& view, const mat4f_t& transform, vec2f_t nf) {
-    auto add = [&] (bbox3f_t::CornerType c) {
+correct_near_far(const bbox3f_t& bbox, const ray_t& view,
+                 const mat4f_t& transform, vec2f_t nf)
+{
+    auto add = [&](bbox3f_t::CornerType c) {
         vec3f_t pos = (transform * bbox.corner(c).homogeneous()).head(3);
         float t = view.direction().dot(pos - view.origin());
         nf[0] = std::min(nf[0], t);
@@ -29,11 +31,8 @@ correct_near_far(const bbox3f_t& bbox, const ray_t& view, const mat4f_t& transfo
 }
 
 renderer::renderer(std::shared_ptr<event_manager> events,
-                   std::shared_ptr<camera> cam,
-                   const parameters& params)
-    : events_(events),
-      cam_(cam),
-      params_(params)
+                   std::shared_ptr<camera> cam, const parameters& params)
+    : events_(events), cam_(cam), params_(params)
 {
     init();
 }
@@ -43,10 +42,10 @@ renderer::~renderer() {}
 void
 renderer::init()
 {
-    geometry_vs_ = shader_program::load(SHADER_ROOT + "geometry.vert",
-                               GL_VERTEX_SHADER);
-    geometry_fs_ = shader_program::load(SHADER_ROOT + "geometry.frag",
-                               GL_FRAGMENT_SHADER);
+    geometry_vs_ =
+        shader_program::load(SHADER_ROOT + "geometry.vert", GL_VERTEX_SHADER);
+    geometry_fs_ =
+        shader_program::load(SHADER_ROOT + "geometry.frag", GL_FRAGMENT_SHADER);
     geometry_pass_ = std::make_shared<render_pass>(geometry_vs_, geometry_fs_);
 
     render_depth_shader_ = shader_program::load(
@@ -54,18 +53,17 @@ renderer::init()
     render_depth_pass_ =
         std::make_shared<baldr::fullscreen_pass>(render_depth_shader_);
 
-    point_visibility_ = std::make_shared<point_visibility>(point_visibility::parameters{
-        .occlusion_threshold = params_.occlusion_threshold,
-        .fill = params_.fill
-    });
+    point_visibility_ =
+        std::make_shared<point_visibility>(point_visibility::parameters{
+            .occlusion_threshold = params_.occlusion_threshold,
+            .fill = params_.fill});
 
-    gbuffer_shader_ = shader_program::load(
-        SHADER_ROOT + "gbuffer.frag", GL_FRAGMENT_SHADER);
-    gbuffer_pass_ =
-        std::make_shared<baldr::fullscreen_pass>(gbuffer_shader_);
+    gbuffer_shader_ =
+        shader_program::load(SHADER_ROOT + "gbuffer.frag", GL_FRAGMENT_SHADER);
+    gbuffer_pass_ = std::make_shared<baldr::fullscreen_pass>(gbuffer_shader_);
 
-    normal_shader_ = shader_program::load(
-        SHADER_ROOT + "normal_shader.frag", GL_FRAGMENT_SHADER);
+    normal_shader_ = shader_program::load(SHADER_ROOT + "normal_shader.frag",
+                                          GL_FRAGMENT_SHADER);
     normal_shader_pass_ =
         std::make_shared<baldr::fullscreen_pass>(normal_shader_);
 
@@ -74,60 +72,76 @@ renderer::init()
     bilateral_filter_pass_ =
         std::make_shared<baldr::fullscreen_pass>(bilateral_filter_shader_);
 
+    visibility_shader_ = shader_program::load(
+        SHADER_ROOT + "lod_visibility.frag", GL_FRAGMENT_SHADER);
+    visibility_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(visibility_shader_);
+
     build_pyramid_shader_ = shader_program::load(
         SHADER_ROOT + "build_pyramid.frag", GL_FRAGMENT_SHADER);
-    pyramid_ = std::make_shared<texture_pyramid>(GL_RED, GL_R32F, build_pyramid_shader_);
+    pyramid_ = std::make_shared<texture_pyramid>(build_pyramid_shader_);
 
     // clear color
     clear_color_ = vec4f_t(0.3f, 0.3f, 0.3f, 1.f);
 
     // add object
-    events_->connect<events::add_object>([&](std::string name, std::shared_ptr<const renderable> obj) {
-        std::lock_guard<std::mutex> lock(data_mutex_);
+    events_->connect<events::add_object>(
+        [&](std::string name, std::shared_ptr<const renderable> obj) {
+            std::lock_guard<std::mutex> lock(data_mutex_);
 
-        objects_[name] = render_data();
-        render_data& data = objects_[name];
+            objects_[name] = render_data();
+            render_data& data = objects_[name];
 
-        data.hidden = false;
-        data.transform = obj->transform();
+            data.hidden = false;
+            data.transform = obj->transform();
 
-        switch (obj->render_mode()) {
-            case render_mode_t::splats:
-                data.mode = GL_POINTS;
-                break;
-            case render_mode_t::triangles:
-                data.mode = GL_TRIANGLES;
-                break;
-            case render_mode_t::lines:
-                data.mode = GL_LINES;
-                break;
-            case render_mode_t::line_strip:
-                data.mode = GL_LINE_STRIP;
-                break;
-        }
-        data.shaded = obj->shaded();
+            switch (obj->render_mode()) {
+                case render_mode_t::splats:
+                    data.mode = GL_POINTS;
+                    break;
+                case render_mode_t::triangles:
+                    data.mode = GL_TRIANGLES;
+                    break;
+                case render_mode_t::lines:
+                    data.mode = GL_LINES;
+                    break;
+                case render_mode_t::line_strip:
+                    data.mode = GL_LINE_STRIP;
+                    break;
+            }
+            data.shaded = obj->shaded();
 
-        renderable::data_matrix_t data_mat = obj->data_matrix();
-        std::vector<uint32_t> indices = obj->vertex_indices();
-        data.vertex_count = indices.size();
-        if (data.vertex_count) {
-            data.vbo = std::make_unique<data_buffer>(data_mat, GL_STATIC_DRAW);
-            data.ibo = std::make_shared<data_buffer>(indices, GL_STATIC_DRAW);
-            data.vao = std::make_unique<vertex_array>();
-            data.vao->set_index_buffer(data.ibo);
-            geometry_vs_->buffer_binding(*data.vao, "pos", "nrm", "fltcol", "uv", padding(sizeof(float))) = *data.vbo;
-        }
+            renderable::data_matrix_t data_mat = obj->data_matrix();
+            std::vector<uint32_t> indices = obj->vertex_indices();
+            data.vertex_count = indices.size();
+            if (data.vertex_count) {
+                data.vbo =
+                    std::make_unique<data_buffer>(data_mat, GL_STATIC_DRAW);
+                data.ibo =
+                    std::make_shared<data_buffer>(indices, GL_STATIC_DRAW);
+                data.vao = std::make_unique<vertex_array>();
+                data.vao->set_index_buffer(data.ibo);
+                geometry_vs_->buffer_binding(*data.vao, "pos", "nrm", "fltcol",
+                                             "uv", padding(sizeof(float))) =
+                    *data.vbo;
+            }
 
-        if (auto tex = obj->texture()) {
-            vec2i_t size = obj->texture_size();
-            data.texture = texture::rgba32f(size[0], size[1]);
-            data.texture->set(tex->data());
-        }
+            if (auto tex = obj->texture()) {
+                vec2i_t size = obj->texture_size();
+                data.texture = texture::rgba32f(size[0], size[1]);
+                data.texture->set(tex->data());
+            }
 
-        // bbox min/max are colwise min/max over the first 3 columns
-        data.bbox.min() = data_mat.block(0, 0, data_mat.rows(), 3).colwise().minCoeff().transpose();
-        data.bbox.max() = data_mat.block(0, 0, data_mat.rows(), 3).colwise().maxCoeff().transpose();
-    });
+            // bbox min/max are colwise min/max over the first 3 columns
+            data.bbox.min() = data_mat.block(0, 0, data_mat.rows(), 3)
+                                  .colwise()
+                                  .minCoeff()
+                                  .transpose();
+            data.bbox.max() = data_mat.block(0, 0, data_mat.rows(), 3)
+                                  .colwise()
+                                  .maxCoeff()
+                                  .transpose();
+        });
 
     // remove object
     events_->connect<events::remove_object>([&](std::string name) {
@@ -159,6 +173,7 @@ renderer::init()
         geometry_depth_ = texture::depth32f(vp[2], vp[3]);
         depth_ = texture::r32f(vp[2], vp[3]);
         gbuffer_ = texture::rgba32f(vp[2], vp[3]);
+        visibility_map_ = texture::rg32f(vp[2], vp[3]);
         point_visibility_->reshape(vp, geometry_depth_);
 
         pyramid_->reshape(vp);
@@ -170,6 +185,7 @@ renderer::init()
 void
 renderer::render()
 {
+    // clang-format off
     mat4f_t vmat = cam_->view_matrix();
     geometry_vs_->uniform("view_mat") = vmat;
     geometry_fs_->uniform("view_mat") = vmat;
@@ -231,51 +247,69 @@ renderer::render()
             }
     });
 
-    point_visibility_->render(pmat, vp, cam_->near_plane_size(), nf);
+    //point_visibility_->render(pmat, vp, cam_->near_plane_size(), nf);
 
-    bilateral_filter_shader_->uniform("skip") = params_.skip_bilateral_filter;
-    bilateral_filter_shader_->uniform("width") = vp[2];
-    bilateral_filter_shader_->uniform("height") = vp[3];
-    //bilateral_filter_shader_->uniform("sigma_depth") = params_.sigma_depth;
-    bilateral_filter_pass_->render(render_options{
-        .input = {{"visibility_map", point_visibility_->output()}},
-        .output = {{"out_depth", pyramid_->texture()}},
-    });
+    //bilateral_filter_shader_->uniform("skip") = params_.skip_bilateral_filter;
+    //bilateral_filter_shader_->uniform("width") = vp[2];
+    //bilateral_filter_shader_->uniform("height") = vp[3];
+    ////bilateral_filter_shader_->uniform("sigma_depth") = params_.sigma_depth;
+    //bilateral_filter_pass_->render(render_options{
+        //.input = {{"visibility_map", point_visibility_->output()}},
+        //.output = {{"out_depth", pyramid_->texture()}},
+    //});
 
-    mat3f_t inv_view = vmat.topLeftCorner<3,3>().transpose();
-    //gbuffer_shader_->uniform("proj_mat") = pmat;
-    gbuffer_shader_->uniform("nf") = nf;
-    gbuffer_shader_->uniform("width") = vp[2];
-    gbuffer_shader_->uniform("height") = vp[3];
-    gbuffer_shader_->uniform("near_size") = cam_->near_plane_size();
-    gbuffer_shader_->uniform("inv_view_mat") = inv_view;
-    gbuffer_pass_->render(render_options{
-        .input = {{"depth_map", pyramid_->texture()}},
-        .output = {{"gbuffer", gbuffer_}},
-        .clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
-    });
+    //mat3f_t inv_view = vmat.topLeftCorner<3,3>().transpose();
+    ////gbuffer_shader_->uniform("proj_mat") = pmat;
+    //gbuffer_shader_->uniform("nf") = nf;
+    //gbuffer_shader_->uniform("width") = vp[2];
+    //gbuffer_shader_->uniform("height") = vp[3];
+    //gbuffer_shader_->uniform("near_size") = cam_->near_plane_size();
+    //gbuffer_shader_->uniform("inv_view_mat") = inv_view;
+    //gbuffer_pass_->render(render_options{
+        //.input = {{"depth_map", pyramid_->texture()}},
+        //.output = {{"gbuffer", gbuffer_}},
+        //.clear_color = vec4f_t(0.f, 0.f, 0.f, 0.f)
+    //});
 
-    if (params_.show_normals) {
-        normal_shader_pass_->render(render_options{
-            .input = {{"gbuffer", gbuffer_}},
-            .clear_color = *clear_color_
-        });
-        return;
-    }
+    //if (params_.show_normals) {
+        //normal_shader_pass_->render(render_options{
+            //.input = {{"gbuffer", gbuffer_}},
+            //.clear_color = *clear_color_
+        //});
+        //return;
+    //}
 
-    pyramid_->build();
-    int level = std::max(0, std::min(*params_.debug_int, static_cast<int>(pyramid_->max_level())));
+    pyramid_->build(geometry_depth_, pmat, cam_->near_plane_size());
+    int level = std::max(0, std::min(static_cast<int>(*params_.debug_float), static_cast<int>(pyramid_->max_level())));
+
+    float lod_factor = 5.f * params_.point_scale * vp[3] / tan(cam_->fov());
+    visibility_pass_->render(
+        render_options{
+            .input = {{"pyramid", pyramid_->texture()}},
+            .output = {{"map", visibility_map_}},
+        },
+        "width", vp[2],
+        "height", vp[3],
+        "occlusion_threshold", params_.occlusion_threshold,
+        "nf", nf,
+        "max_level", static_cast<int>(pyramid_->max_level()),
+        "lod_factor", lod_factor
+    );
+
     //vp[2] = std::max(1, vp[2] / static_cast<int>(std::pow(2.f, static_cast<float>(level))));
     //vp[3] = std::max(1, vp[3] / static_cast<int>(std::pow(2.f, static_cast<float>(level))));
 
-    render_depth_shader_->uniform("width") = vp[2];
-    render_depth_shader_->uniform("height") = vp[3];
-    render_depth_shader_->uniform("level") = level;
-    render_depth_pass_->render(render_options{
-        .input = {{"depth_map", pyramid_->texture()}},
-        .clear_color = *clear_color_
-    });
+    render_depth_pass_->render(
+        render_options{
+            .input = {{"depth_map", visibility_map_}},
+            .clear_color = *clear_color_
+        },
+        "width", vp[2],
+        "height", vp[3],
+        "level", level
+    );
 
+    // clang-format on
 }
 
 }  // namespace graphene::detail

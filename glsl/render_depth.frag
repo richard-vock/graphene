@@ -5,6 +5,7 @@ layout(location=1) uniform mat4 proj_mat;
 layout(location=2) uniform int width;
 layout(location=3) uniform int height;
 layout(location=4) uniform int level;
+//layout(location=5) uniform vec2 nf;
 //layout(location=2) uniform float near;
 //layout(location=3) uniform float far;
 
@@ -47,9 +48,10 @@ color_map(float value) {
 void main() {
     vec2 size = vec2(width, height) / pow(2,level);
     ivec2 px = clamp(ivec2(uv * size), ivec2(0,0), ivec2(size.x-1, size.y-1));
-    float depth = texelFetch(depth_map, px, level).r;
-    if (depth >= 0.99999) {
+    vec2 tex = texelFetch(depth_map, px, level).rg;
+    if (tex.r > 0.5 && tex.g < 0.9999) {
+        color = color_map(tex.g);
+    } else if (tex.r > 0.5 && tex.g >= 0.9999) {
         discard;
     }
-    color = color_map(depth);
 }

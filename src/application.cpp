@@ -196,7 +196,8 @@ application::impl::start()
                 property::boolean("Anisotropic Fill", params.fill),
                 property::boolean("Skip Bilateral Filter", params.skip_bilateral_filter),
                 property::boolean("Show Normals", params.show_normals),
-                property::integer("debug int", params.debug_int),
+                property::range("debug float", params.debug_float, bounds{0.f, 20.f}),
+                property::range("point_scale", params.point_scale, bounds{0.001f, 0.05f}),
                 property::boolean("debug", params.debug)
             )
         );

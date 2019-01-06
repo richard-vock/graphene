@@ -21,7 +21,8 @@ public:
         shared<bool> skip_bilateral_filter = false;
         shared<bool> show_normals = false;
         shared<bool> debug = false;
-        shared<int> debug_int = 0;
+        shared<float> debug_float = 0.f;
+        shared<float> point_scale = 0.01f;
     };
 
 protected:
@@ -75,6 +76,9 @@ protected:
     std::shared_ptr<baldr::shader_program> normal_shader_;
     std::shared_ptr<baldr::fullscreen_pass> normal_shader_pass_;
 
+    std::shared_ptr<baldr::shader_program> visibility_shader_;
+    std::shared_ptr<baldr::fullscreen_pass> visibility_pass_;
+    std::shared_ptr<baldr::texture> visibility_map_;
     std::shared_ptr<baldr::shader_program> build_pyramid_shader_;
     std::shared_ptr<texture_pyramid> pyramid_;
 
