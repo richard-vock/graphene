@@ -86,6 +86,12 @@ protected:
     std::map<std::string, render_data> objects_;
     shared<vec4f_t> clear_color_;
 
+    // testing
+    std::shared_ptr<baldr::texture> inp_;
+    std::shared_ptr<baldr::texture> outp_;
+    std::shared_ptr<baldr::shader_program> filt_shader_;
+    std::shared_ptr<baldr::fullscreen_pass> filt_pass_;
+
     parameters params_;
 };
 

@@ -180,6 +180,25 @@ renderer::init()
     };
     reshape(cam_->viewport());
     events_->connect<events::window_resize>(reshape);
+
+    // testing
+    std::vector<float> tex_data(6*6);;
+    for (uint32_t i = 0; i < 6; ++i) {
+        for (uint32_t j = 0; j < 6; ++j) {
+            tex_data[i*6+j] = static_cast<float>(j) / 5.f;
+        }
+    }
+    inp_ = texture::r32f(6,6);
+    inp_->set(tex_data.data());
+    inp_->set_wrap_mode({GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, GL_REPEAT});
+    inp_->set_filter({GL_LINEAR, GL_LINEAR});
+    outp_ = texture::r32f(6,6);
+    outp_->set_wrap_mode({GL_REPEAT, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE});
+    outp_->set_filter({GL_LINEAR, GL_LINEAR});
+    filt_shader_ = shader_program::load(
+        SHADER_ROOT + "filt.frag", GL_FRAGMENT_SHADER);
+    filt_pass_ =
+        std::make_shared<baldr::fullscreen_pass>(filt_shader_);
 }
 
 void
@@ -295,6 +314,32 @@ renderer::render()
         "max_level", static_cast<int>(pyramid_->max_level()),
         "lod_factor", lod_factor
     );
+
+    // testing
+    glViewport(0, 0, 6, 6);
+    filt_pass_->render(
+        render_options{
+            .input = {{"tex", inp_}},
+            .output = {{"filtered", outp_}},
+        },
+        "width", 6,
+        "height", 6,
+        "up", false
+    );
+    filt_pass_->render(
+        render_options{
+            .input = {{"tex", outp_}},
+            .output = {{"filtered", inp_}},
+        },
+        "width", 6,
+        "height", 6,
+        "up", true
+    );
+    Eigen::Matrix<float, 6, 6, Eigen::RowMajor> result = Eigen::Matrix<float, 6, 6, Eigen::RowMajor>::Zero();
+    inp_->get(0, result.data());
+    pdebug("result: \n{}", result);
+    getchar();
+    glViewport(vp[0], vp[1], vp[2], vp[3]);
 
     //vp[2] = std::max(1, vp[2] / static_cast<int>(std::pow(2.f, static_cast<float>(level))));
     //vp[3] = std::max(1, vp[3] / static_cast<int>(std::pow(2.f, static_cast<float>(level))));
