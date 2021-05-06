@@ -1,0 +1,69 @@
+#version 450 core
+
+#include <util.comp>
+#include <splats.comp>
+
+layout( local_size_x = 1024,
+        local_size_y = 1,
+        local_size_z = 1) in;
+
+uniform layout(location =  0) uint point_count;
+uniform layout(location =  1) uint max_candidates;
+uniform layout(location =  2) float radius;
+uniform layout(location =  3) vec2 px;
+uniform layout(location =  4) mat4 modelview_mat;
+uniform layout(location =  5) mat4 proj_mat;
+uniform layout(location =  6) ivec4 viewport;
+
+layout(binding = 0, std430) readonly buffer vbo_buffer { float vbo[]; };
+layout(binding = 1, std430) writeonly buffer candidate_buffer { float candidates[]; };
+layout(binding = 2, std430) buffer count_buffer { uint count; };
+
+void main(void)
+{
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx >= point_count) return;
+
+    if (idx == 0) {
+        count = 0;
+    }
+    memoryBarrier();
+
+    vec2 fres = vec2(viewport.zw);
+
+    // pick ray origin is zero in eye space
+    // ray direction is direction to point on near plane
+    vec3 dir = normalize(pixel_to_near_plane(px, fres, proj_mat));
+
+    /* vec4 pos = vec4(vbo[idx*10+0], vbo[idx*10+1], vbo[idx*10+2], 1.0); */
+    /* pos = proj_mat * modelview_mat * pos; */
+    /* pos /= pos.w; // ndc-space */
+    /* float depth = -pos.z; */
+    /* vec2 screen_pos = 0.5 * (pos.xy + vec2(1.0)) * fres; */
+
+    /* vec3 prj = depth * dir; */
+    /* if (length(screen_pos - px) > radius) { */
+    /*     return; */
+    /* } */
+
+    // compute point projection on ray and check distance (against radius)
+    vec3 pos = vec3(vbo[idx*10+0], vbo[idx*10+1], vbo[idx*10+2]);
+    pos = (modelview_mat * vec4(pos, 1.0)).xyz; // eye space
+    float depth = dot(pos, dir);
+    if (depth < 0.0) {
+        return;
+    }
+    vec3 prj = depth * dir;
+    if (length(prj - pos) > radius) {
+        return;
+    }
+
+    // if we don't have enough candidates yet write distance on ray (depth) and index
+    uint out_idx = atomicAdd(count, 1);
+    if (out_idx < max_candidates) {
+        candidates[out_idx] = float(idx);
+        candidates[max_candidates + out_idx] = depth;
+        // for debugging - needs readonly in buffer line at the top removed
+        // vbo[idx*10+6] = pack_rgba(vec4(1.0, 0.0, 0.0, 1.0));
+    }
+}

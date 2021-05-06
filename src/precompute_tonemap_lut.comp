@@ -1,0 +1,33 @@
+#version 450 core
+
+#include <util.comp>
+#include <tonemap.comp>
+
+layout( local_size_x = 32,
+        local_size_y = 32,
+        local_size_z = 1) in;
+
+// output
+uniform layout(binding = 0, rgba32f) writeonly image3D lut;
+
+layout(location=1) uniform float film_slope;
+layout(location=2) uniform float film_shoulder;
+layout(location=3) uniform float film_toe;
+layout(location=4) uniform float film_black_clip;
+layout(location=5) uniform float film_white_clip;
+
+void main(void)
+{
+    ivec3 vx = ivec3(gl_GlobalInvocationID.xyz);
+    vec3 lin = vec3(vx) / 31.0;
+    filmic_params film_params;
+    film_params.film_slope = film_slope;
+    film_params.film_shoulder = film_shoulder;
+    film_params.film_toe = film_toe;
+    film_params.film_black_clip = film_black_clip;
+    film_params.film_white_clip = film_white_clip;
+    vec3 color = neutral_map(lin, film_params);
+    /* vec3 color = gamma_map(lin); */
+
+    imageStore(lut, vx, vec4(color, 0.0));
+}

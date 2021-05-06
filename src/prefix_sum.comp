@@ -1,0 +1,83 @@
+#version 450 core
+
+layout( local_size_x = 1024,
+        local_size_y = 1,
+        local_size_z = 1) in;
+
+layout(binding = 0, std430) buffer grid_buffer { uvec2 grid[]; };
+layout(binding = 1, std430) writeonly buffer sum_buffer { uint sums[]; };
+
+#define N (2 * gl_WorkGroupSize.x)
+#define BANKS 32
+#define LOG_BANKS 5
+#define CONFLICT_FREE_OFFSET(n) (((n) >> LOG_BANKS) + ((n) >> (2*LOG_BANKS)))
+// Number of extra elements to be stored in the shared memory
+// due to conflict free offsets
+#define EXTRA_SMEM_ELEMENTS ((N / BANKS) + ((N / BANKS) / BANKS))
+#define NUM_SMEM_ELEMENTS (N + EXTRA_SMEM_ELEMENTS)
+
+// shared uint shared_data[NUM_SMEM_ELEMENTS];
+shared uint shared_data[N];
+
+void main(void) {
+    uint thid = gl_LocalInvocationID.x;
+    uint n = 2 * gl_WorkGroupSize.x;
+    uint wg_offset = gl_WorkGroupID.x * n;
+
+    /* // init shared memory with input data */
+    shared_data[2* thid] = grid[wg_offset + 2 * thid].x;
+    shared_data[2* thid + 1] = grid[wg_offset + 2 * thid + 1].x;
+    memoryBarrierShared();
+
+    uint off = 1;
+
+    // up-sweep
+    for (uint d = n >> 1; d > 0; d >>= 1) {
+        if (thid < d) {
+            uint ai = off * (2 * thid + 1) - 1;
+            uint bi = off * (2 * thid + 2) - 1;
+
+            // ai += CONFLICT_FREE_OFFSET(ai);
+            // bi += CONFLICT_FREE_OFFSET(bi);
+
+            shared_data[bi] += shared_data[ai];
+        }
+        off *= 2;
+
+        memoryBarrierShared();
+    }
+
+    uint total = shared_data[(2 * gl_WorkGroupSize.x) - 1];
+    sums[gl_WorkGroupID.x] = total;
+
+    /* // set last element to zero */
+    if (thid == 0) {
+        shared_data[(2 * gl_WorkGroupSize.x) - 1] = 0;
+    }
+    memoryBarrierShared();
+
+    // down-sweep */
+    for (int d = 1; d < n; d *= 2) {
+        off >>= 1;
+        if (thid < d) {
+            uint ai = off * ( 2 * thid + 1) - 1;
+            uint bi = off * ( 2 * thid + 2) - 1;
+
+            // ai += CONFLICT_FREE_OFFSET(ai);
+            // bi += CONFLICT_FREE_OFFSET(bi);
+
+            uint t = shared_data[ai];
+            shared_data[ai] = shared_data[bi];
+            shared_data[bi] += t;
+        }
+
+        memoryBarrierShared();
+    }
+
+    // write back to input data
+    grid[wg_offset + 2 * thid ].x = shared_data[2 * thid];
+    grid[wg_offset + 2 * thid + 1].x = shared_data[2 * thid + 1];
+    // for inclusive scan:
+    // grid[wg_offset + 2 * thid ].x = shared_data[2 * thid + 1];
+    // grid[wg_offset + 2 * thid + 1].x = (2 * thid + 2 < n) ? shared_data[2 * thid + 2] : total;
+}

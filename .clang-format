@@ -2,25 +2,27 @@
 Language:        Cpp
 # BasedOnStyle:  Google
 AccessModifierOffset: -4
-AlignAfterOpenBracket: true
+AlignAfterOpenBracket: Align
 AlignEscapedNewlinesLeft: true
 AlignOperands:   true
 AlignTrailingComments: true
-AllowAllParametersOfDeclarationOnNextLine: true
+AllowAllArgumentsOnNextLine: true
+AllowAllParametersOfDeclarationOnNextLine: false
 AllowShortBlocksOnASingleLine: false
 AllowShortCaseLabelsOnASingleLine: false
 AllowShortIfStatementsOnASingleLine: true
 AllowShortLoopsOnASingleLine: true
-AllowShortFunctionsOnASingleLine: All
+AllowShortFunctionsOnASingleLine: Empty
+AlwaysBreakAfterDefinitionReturnType: All
 AlwaysBreakAfterReturnType: All
 AlwaysBreakTemplateDeclarations: true
 AlwaysBreakBeforeMultilineStrings: true
 BreakBeforeBinaryOperators: None
 BreakBeforeTernaryOperators: true
 BreakConstructorInitializersBeforeComma: false
-BinPackParameters: true
-BinPackArguments: true
-ColumnLimit:     80
+BinPackParameters: false
+BinPackArguments: false
+ColumnLimit:     100
 ConstructorInitializerAllOnOneLineOrOnePerLine: true
 ConstructorInitializerIndentWidth: 4
 DerivePointerAlignment: true
@@ -47,7 +49,7 @@ Standard:        Auto
 IndentWidth:     4
 TabWidth:        4
 UseTab:          Never
-BreakBeforeBraces: Mozilla #Attach
+BreakBeforeBraces: Stroustrup
 SpacesInParentheses: false
 SpacesInSquareBrackets: false
 SpacesInAngles:  false

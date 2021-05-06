@@ -1,4 +1,7 @@
-#include <graphene/camera.hpp>
+#include <camera.hpp>
+#include <fstream>
+
+namespace fs = std::filesystem;
 
 namespace graphene {
 
@@ -32,24 +35,16 @@ camera::pick_ray(const vec2i_t& px, const vec2f_t& near_far)
 }
 
 camera::camera(std::shared_ptr<event_manager> events, vec4i_t viewport,
-               float fov,
+               shared<float> fov,
                std::function<void(vec3f_t, vec3f_t)> update_callback,
-               std::function<mat4f_t()> get_view_matrix_callback)
+               std::function<mat4f_t()> get_view_matrix_callback,
+               std::function<void(mat4f_t const&)> restore_model_callback)
     : events_(events),
       fov_(fov),
       update_(std::move(update_callback)),
-      get_view_matrix_(std::move(get_view_matrix_callback))
+      get_view_matrix_(std::move(get_view_matrix_callback)),
+      restore_(std::move(restore_model_callback))
 {
-    // clang-format off
-    math_to_opengl_ <<  1.f, 0.f, 0.f, 0.f,
-                        0.f, 0.f, 1.f, 0.f,
-                        0.f, -1.f, 0.f, 0.f,
-                        0.f, 0.f, 0.f, 1.f;
-    opengl_to_math_ <<  1.f, 0.f, 0.f, 0.f,
-                        0.f, 0.f, -1.f, 0.f,
-                        0.f, 1.f, 0.f, 0.f,
-                        0.f, 0.f, 0.f, 1.f;
-    // clang-format on
     view_matrix_ = get_view_matrix_();
     auto reshape = [&] (vec4i_t viewport) {
         std::lock_guard<std::mutex> lock(mut_);
@@ -58,15 +53,15 @@ camera::camera(std::shared_ptr<event_manager> events, vec4i_t viewport,
     reshape(std::move(viewport));
 
     events_->connect<events::mouse_scroll>([&] (int32_t delta, modifier) {
-        update(vec3f_t(0.f, 0.f, delta), vec3f_t(0.f, 0.f, 0.f));
+        update(vec3f_t(0.f, 0.f, 0.3f * delta), vec3f_t(0.f, 0.f, 0.f));
     });
 
     events->connect<events::mouse_drag>([&] (int btn, vec2f_t delta, vec2f_t, modifier mod) {
         if (btn == 1) {
             if (mod.ctrl) {
-                update(vec3f_t(delta[0], delta[1], 0.f), vec3f_t(0.f, 0.f, 0.f));
+                update(vec3f_t(0.2f * delta[0], 0.2f * delta[1], 0.f), vec3f_t(0.f, 0.f, 0.f));
             } else {
-                update(vec3f_t(0.f, 0.f, 0.f), vec3f_t(delta[0], delta[1], 0.f));
+                update(vec3f_t(0.f, 0.f, 0.f), vec3f_t(0.2f * delta[0], 0.2f * delta[1], 0.f));
             }
         }
     });
@@ -75,18 +70,14 @@ camera::camera(std::shared_ptr<event_manager> events, vec4i_t viewport,
 }
 
 mat4f_t
-camera::projection_matrix(const vec2f_t& near_far) const {
+camera::projection_matrix(const vec2f_t& near_far) {
     float fovtan;
     float aspect;
     {
         std::lock_guard<std::mutex> lock(mut_);
-        fovtan = std::tan(fov_ * M_PI / 360.f);
-        aspect = viewport_[2] / viewport_[3];
+        fovtan = std::tan((*fov_) * M_PI / 360.f);
+        aspect = static_cast<float>(viewport_[2]) / viewport_[3];
     }
-
-    // float f = 1.0 / fovtan;
-    // frustum_width_ = 2.f*near_far[0]*aspect / f;
-    // frustum_height_ = 2.f*near_far[0] / f;
 
     float range = fovtan * near_far[0];
     float left = -range * aspect;
@@ -100,15 +91,48 @@ camera::projection_matrix(const vec2f_t& near_far) const {
     proj(3, 2) = -1.f;
     proj(2, 3) = -(2.f * near_far[1] * near_far[0]) / (near_far[1] - near_far[0]);
 
+    last_proj_ = proj;
+
     return proj;
 }
 
+mat4f_t const&
+camera::last_projection_matrix() const {
+    return last_proj_;
+}
+
 vec2f_t
-camera::near_plane_size() const {
+camera::near_plane_size(const vec2f_t& near_far) const {
     std::lock_guard<std::mutex> lock(mut_);
-    float fov_tan = std::tan(fov_ * M_PI / 360.f);
+    float fov_tan = std::tan((*fov_) * M_PI / 360.f);
     float aspect = viewport_[2] / viewport_[3];
-    return vec2f_t(aspect * fov_tan, fov_tan);
+    return 2.f * near_far[0] * vec2f_t(aspect * fov_tan, fov_tan);
+}
+
+void
+camera::set_view_matrix(const mat4f_t& view_mat) {
+    std::lock_guard<std::mutex> lock(mut_);
+    view_matrix_ = view_mat;
+    restore_(view_matrix_);
+}
+
+void
+camera::store(const fs::path& p) const {
+    std::ofstream out(p.string(), std::ios::out | std::ios::binary);
+    if (out.good()) {
+        std::lock_guard<std::mutex> lock(mut_);
+        out.write((const char*) view_matrix_.data(), 16 * sizeof(float));
+    }
+}
+
+void
+camera::restore(const fs::path& p) {
+    std::ifstream in(p.string(), std::ios::in | std::ios::binary);
+    if (in.good()) {
+        mat4f_t view_mat;
+        in.read((char*) view_mat.data(), 16 * sizeof(float));
+        set_view_matrix(view_mat);
+    }
 }
 
 }  // namespace graphene

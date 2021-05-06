@@ -1,4 +1,4 @@
-#include <graphene/choose_file.hpp>
+#include <choose_file.hpp>
 
 #include <imgui.h>
 
@@ -207,7 +207,7 @@ choose_file::render()
         }
     }
     ImGui::SameLine();
-    ImGui::Text(path_str.c_str());
+    ImGui::Text("%s", path_str.c_str());
 }
 
 } // property

@@ -1,0 +1,158 @@
+#version 450 core
+
+layout( local_size_x = 32,
+        local_size_y = 1,
+        local_size_z = 1) in;
+
+// input
+uniform layout(location =  1) int count;
+layout(binding = 0, std430) readonly buffer vbo_buffer { float vbo[]; };
+
+// output
+layout(binding = 1, std430) buffer bbox_buffer { uint bbox[]; };
+
+uint
+int_float_min(uint prev, float comp) {
+    float p = min(uintBitsToFloat(prev), comp);
+    return floatBitsToUint(p);
+}
+
+void
+atomic_min_pos(inout uint value, float comp) {
+    uint old = value;
+    uint assumed;
+    do {
+        assumed = old;
+        uint min_value = int_float_min(assumed, comp);
+        old = atomicExchange(value, min_value);
+    } while (assumed != old);
+}
+
+void main(void)
+{
+    int idx = int(gl_GlobalInvocationID.x);
+    if (idx >= count) return;
+
+    vec3 p = vec3(vbo[10*idx+0],
+                  vbo[10*idx+1],
+                  vbo[10*idx+2]);
+
+    if (idx == 0) {
+        bbox[0]  = -1; // min x
+        bbox[1]  = -1; // min y
+        bbox[2]  = -1; // min z
+        bbox[3]  =  0; // max x
+        bbox[4]  =  0; // max y
+        bbox[5]  =  0; // max z
+        // mirrored version for negative values
+        bbox[6]  =  0; // min x
+        bbox[7]  =  0; // min y
+        bbox[8]  =  0; // min z
+        bbox[9]  = -1; // max x
+        bbox[10] = -1; // max y
+        bbox[11] = -1; // max z
+        // counters
+        bbox[12] = 0;
+        bbox[13] = 0;
+        bbox[14] = 0;
+        bbox[15] = 0;
+        bbox[16] = 0;
+        bbox[17] = 0;
+    }
+    memoryBarrier();
+
+    // x
+    if (p.x >= 0.0) {
+        uint x = floatBitsToUint(p.x);
+        atomicMin(bbox[0+0], x);
+        atomicMax(bbox[0+3], x);
+        atomicAdd(bbox[12], 1u);
+    } else {
+        uint x = floatBitsToUint(-p.x);
+        atomicMax(bbox[6+0], x);
+        atomicMin(bbox[6+3], x);
+        atomicAdd(bbox[13], 1u);
+    }
+    // y
+    if (p.y >= 0.0) {
+        uint y = floatBitsToUint(p.y);
+        atomicMin(bbox[0+1], y);
+        atomicMax(bbox[0+4], y);
+        atomicAdd(bbox[14], 1u);
+    } else {
+        uint y = floatBitsToUint(-p.y);
+        atomicMax(bbox[6+1], y);
+        atomicMin(bbox[6+4], y);
+        atomicAdd(bbox[15], 1u);
+    }
+    // z
+    if (p.z >= 0.0) {
+        uint z = floatBitsToUint(p.z);
+        atomicMin(bbox[0+2], z);
+        atomicMax(bbox[0+5], z);
+        atomicAdd(bbox[16], 1u);
+    } else {
+        uint z = floatBitsToUint(-p.z);
+        atomicMax(bbox[6+2], z);
+        atomicMin(bbox[6+5], z);
+        atomicAdd(bbox[17], 1u);
+    }
+
+    barrier();
+    if (idx == 0) {
+        float min_x, min_y, min_z, max_x, max_y, max_z;
+        if (bbox[12] == 0u) {
+            min_x = -uintBitsToFloat(bbox[6]);
+            max_x = -uintBitsToFloat(bbox[9]);
+        } else if (bbox[13] == 0u) {
+            min_x = uintBitsToFloat(bbox[0]);
+            max_x = uintBitsToFloat(bbox[3]);
+        } else {
+            min_x = min(uintBitsToFloat(bbox[0]), -uintBitsToFloat(bbox[6]));
+            max_x = max(uintBitsToFloat(bbox[3]), -uintBitsToFloat(bbox[9]));
+        }
+        if (bbox[14] == 0u) {
+            min_y = -uintBitsToFloat(bbox[7]);
+            max_y = -uintBitsToFloat(bbox[10]);
+        } else if (bbox[15] == 0u) {
+            min_y = uintBitsToFloat(bbox[1]);
+            max_y = uintBitsToFloat(bbox[4]);
+        } else {
+            min_y = min(uintBitsToFloat(bbox[1]), -uintBitsToFloat(bbox[7]));
+            max_y = max(uintBitsToFloat(bbox[4]), -uintBitsToFloat(bbox[10]));
+        }
+        if (bbox[16] == 0u) {
+            min_z = -uintBitsToFloat(bbox[8]);
+            max_z = -uintBitsToFloat(bbox[11]);
+        } else if (bbox[17] == 0u) {
+            min_z = uintBitsToFloat(bbox[2]);
+            max_z = uintBitsToFloat(bbox[5]);
+        } else {
+            min_z = min(uintBitsToFloat(bbox[2]), -uintBitsToFloat(bbox[8]));
+            max_z = max(uintBitsToFloat(bbox[5]), -uintBitsToFloat(bbox[11]));
+        }
+        bbox[0] = floatBitsToUint(min_x);
+        bbox[1] = floatBitsToUint(min_y);
+        bbox[2] = floatBitsToUint(min_z);
+        bbox[3] = floatBitsToUint(max_x);
+        bbox[4] = floatBitsToUint(max_y);
+        bbox[5] = floatBitsToUint(max_z);
+    }
+    /* atomic_min(bbox[0], p.x); */
+    /* memoryBarrier(); */
+    /* atomic_min(bbox[1], p.y); */
+    /* memoryBarrier(); */
+    /* atomic_min(bbox[2], p.z); */
+    /* uint assumed_min_x; */
+    /* uint old_min_x = pinf; */
+    /* uint old_min_y = pinf; */
+    /* uint old_min_z = pinf; */
+    /* uint old_max_x = ninf; */
+    /* uint old_max_y = ninf; */
+    /* uint old_max_z = ninf; */
+    /* do { */
+    /*     assumed_min_x = old_min_x; */
+    /*     uint min_value = int_float_min(assumed_min_x, p.x); */
+    /*     old_min_x = atomicExchange(bbox[0], min_value); */
+    /* } while (assumed_min_x != old_min_x); */
+}

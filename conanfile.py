@@ -1,14 +1,14 @@
 from conans import ConanFile, CMake, tools
+import os
 
 
 class GrapheneConan(ConanFile):
     name = "graphene"
-    requires = (("boost/1.68.0@conan/stable"),
-                ("eigen/3.3.5@conan/stable"),
-                ("fmt/5.2.1@bincrafters/stable"),
-                ("baldr/0.1@richard-vock/dev", "private"),
+    requires = (("eigen/3.3.9"),
+                ("glew/2.1.0"),
+                ("baldr/0.3"),
+                ("fmt/7.1.3", "private"),
                 ("glfw/3.2.1@bincrafters/stable", "private"),
-                ("glew/2.1.0@bincrafters/stable", "private"),
                 ("imgui/1.62@bincrafters/stable", "private"))
     version = "0.1"
     license = "unlicense"
@@ -20,7 +20,7 @@ class GrapheneConan(ConanFile):
     options = {"shared": [True, False], "verbose": [True, False]}
     default_options = "shared=False", "verbose=False"
     generators = "cmake"
-    exports_sources = "!include/graphene/config.hpp", "include*", "src*", "glsl*", "CMakeLists.txt", "config.hpp.in"
+    exports_sources = "!include/graphene/config.hpp", "cmake*", "include*", "src*", "glsl*", "CMakeLists.txt", "config.hpp.in"
 
     def build(self):
         cmake = CMake(self)
@@ -29,10 +29,11 @@ class GrapheneConan(ConanFile):
         cmake.build()
 
     def package(self):
-        self.copy("include/graphene/*.hpp")
-        self.copy("include/graphene/*.ipp")
+        self.copy("include/*.hpp", dst="include/graphene", keep_path=False)
+        self.copy("include/*.ipp", dst="include/graphene", keep_path=False)
         self.copy("shaders/*.vert", dst="share")
         self.copy("shaders/*.frag", dst="share")
+        self.copy("shaders/*.comp", dst="share")
         self.copy("*graphene.lib", dst="lib", keep_path=False)
         self.copy("*.dll", dst="bin", keep_path=False)
         self.copy("*.so", dst="lib", keep_path=False)

@@ -1,0 +1,18 @@
+#version 450 core
+
+layout( local_size_x = 1024,
+        local_size_y = 1,
+        local_size_z = 1) in;
+
+layout(binding = 0, std430) buffer grid_buffer { uvec2 grid[]; };
+layout(binding = 1, std430) readonly buffer sum_buffer { uint sums[]; };
+
+void main(void) {
+    uint thid = gl_LocalInvocationID.x;
+    uint blid = gl_WorkGroupID.x;
+    uint wg_offset = gl_WorkGroupID.x * 2 * gl_WorkGroupSize.x;
+    if (blid > 0) {
+        grid[wg_offset + 2 * thid ].x    += sums[blid-1];
+        grid[wg_offset + 2 * thid + 1].x += sums[blid-1];
+    }
+}

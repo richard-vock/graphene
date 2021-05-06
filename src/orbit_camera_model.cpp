@@ -1,4 +1,6 @@
-#include <graphene/orbit_camera_model.hpp>
+#include <orbit_camera_model.hpp>
+
+namespace fs = std::filesystem;
 
 namespace graphene {
 
@@ -22,20 +24,13 @@ camera_traits<orbit_camera_model>::init(std::variant<looking_at, looking_towards
         .view_matrix = mat4f_t::Identity()
     }));
 
-    // clang-format off
-    mat3f_t math_to_opengl;
-    math_to_opengl <<  1.f, 0.f, 0.f,
-                       0.f, 0.f, 1.f,
-                       0.f, -1.f, 0.f;
-    // clang-format on
-
     auto && [pos, look_at] = std::visit(overloaded {
         [](looking_at      v) -> std::pair<vec3f_t, vec3f_t> { auto && [pos, lat] = v; return { pos, lat }; },
         [](looking_towards v) -> std::pair<vec3f_t, vec3f_t> { auto && [pos, dir] = v; return { pos, pos+dir }; },
     }, view);
 
-    pos = math_to_opengl * (pos - look_at);
-    model->look_at = math_to_opengl * look_at;
+    pos -= look_at;
+    model->look_at = look_at;
 
     model->radius = pos.norm();
     pos /= model->radius;
@@ -97,6 +92,14 @@ camera_traits<orbit_camera_model>::update(std::shared_ptr<orbit_camera_model> mo
 mat4f_t
 camera_traits<orbit_camera_model>::view_matrix(std::shared_ptr<const orbit_camera_model> model) {
     return model->view_matrix;
+}
+
+void
+camera_traits<orbit_camera_model>::restore(std::shared_ptr<orbit_camera_model> model, mat4f_t const& view_mat) {
+    vec3f_t pos = -view_mat.topLeftCorner<3,3>().transpose() *
+                   view_mat.topRightCorner<3,1>();
+    vec3f_t fwd = -view_mat.block<1, 3>(2, 0).transpose();
+    *model = *camera_traits<orbit_camera_model>::init(looking_towards{pos, fwd});
 }
 
 } // graphene

@@ -1,0 +1,56 @@
+#version 450 core
+
+layout( local_size_x = 1024,
+        local_size_y = 1,
+        local_size_z = 1) in;
+
+uniform layout(location =  0) uint point_count;
+uniform layout(location =  1) vec3 origin;
+uniform layout(location =  2) float radius;
+layout(binding = 0, std430) readonly buffer vbo_buffer { float vbo[]; };
+layout(binding = 1, std430) readonly buffer bbox_buffer { float bbox[]; };
+layout(binding = 2, std430) writeonly buffer grid_buffer { uvec2 grid[]; };
+layout(binding = 3, std430) buffer index_buffer { uint point_index; };
+layout(binding = 4, std430) buffer count_buffer { uint counts[]; };
+
+uvec3
+grid_coord(vec3 pos, vec3 bb_min) {
+    return uvec3((pos - bb_min) / radius);
+}
+
+const uint grid_size = 512;
+
+uint
+hash_cell(uvec3 cell) {
+    return cell.z * grid_size * grid_size
+         + cell.y * grid_size
+         + cell.x;
+}
+
+void main(void)
+{
+    uint idx = uint(gl_GlobalInvocationID.x);
+    if (idx > point_count) return;
+
+    if (idx == 0) {
+        point_index = 0;
+    }
+    memoryBarrier();
+
+    vec3 bb_min = origin - vec3(radius);
+    vec3 bb_max = bb_min + vec3(radius * float(grid_size));
+    bb_min = max(bb_min, vec3(bbox[0], bbox[1], bbox[2]));
+    bb_max = min(bb_max, vec3(bbox[3], bbox[4], bbox[5]));
+
+    vec3 pos = vec3(vbo[10*idx+0], vbo[10*idx+1], vbo[10*idx+2]);
+    if (any(lessThan(pos, bb_min)) || any(greaterThan(pos, bb_max))) {
+        return;
+    }
+
+    uint out_idx = atomicAdd(point_index, 1);
+    uint hash = hash_cell(grid_coord(pos, bb_min));
+    grid[out_idx].x = hash;
+    grid[out_idx].y = idx;
+
+    atomicAdd(counts[hash], 1u);
+}

@@ -1,4 +1,4 @@
-#include <graphene/lines.hpp>
+#include <lines.hpp>
 
 namespace graphene {
 
@@ -12,33 +12,22 @@ lines::lines(const std::vector<vec3f_t>& vertices, std::vector<vec4f_t> colors,
 {
     terminate_unless(vertices.size() == colors.size(),
                      "Vertex and color count do not match");
-    mat_ = data_matrix_t(vertices.size(), 10);
-    indices_.resize(vertices.size());
+    count_ = vertices.size();
+    std::vector<float> vbo_data(count_ * 10, 0.f);
+    std::vector<uint32_t> ibo_data(count_, 0.f);
     for (uint32_t i = 0; i < vertices.size(); ++i) {
-        // pos
-        mat_.block<1, 3>(i, 0) = vertices[i].transpose();
-        // nrm
-        mat_.block<1, 3>(i, 3) = vec3f_t::UnitZ();
-        // col
-        mat_(i, 6) = pack_rgba(colors[i]);
-        // uv
-        mat_.block<1, 2>(i, 7) = vec2f_t::Zero();
-        // curv
-        mat_(i, 9) = 0.f;
-        indices_[i] = i;
+        vbo_data[i * 10 + 0] = vertices[i][0];
+        vbo_data[i * 10 + 1] = vertices[i][1];
+        vbo_data[i * 10 + 2] = vertices[i][2];
+        //vbo_data[i * 10 + 3] = 0.0f;
+        //vbo_data[i * 10 + 4] = 0.0f;
+        vbo_data[i * 10 + 5] = 1.0f;
+        vbo_data[i * 10 + 6] = pack_rgba(colors[i]);
+        ibo_data[i] = i;
+        bbox_.extend(vertices[i]);
     }
-}
-
-std::optional<std::vector<uint8_t>>
-lines::texture() const
-{
-    return std::nullopt;
-}
-
-vec2i_t
-lines::texture_size() const
-{
-    return vec2i_t::Zero();
+    vbo_ = std::make_shared<baldr::data_buffer>(vbo_data, GL_STATIC_DRAW);
+    ibo_ = std::make_shared<baldr::data_buffer>(ibo_data, GL_STATIC_DRAW);
 }
 
 render_mode_t
@@ -53,16 +42,16 @@ lines::shaded() const
     return false;
 }
 
-renderable::data_matrix_t
-lines::data_matrix() const
+std::shared_ptr<baldr::data_buffer>
+lines::vertex_buffer() const
 {
-    return mat_;
+    return vbo_;
 }
 
-std::vector<uint32_t>
-lines::vertex_indices() const
+std::shared_ptr<baldr::data_buffer>
+lines::index_buffer() const
 {
-    return indices_;
+    return ibo_;
 }
 
 }  // namespace graphene

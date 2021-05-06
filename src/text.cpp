@@ -1,4 +1,4 @@
-#include <graphene/text.hpp>
+#include <text.hpp>
 
 #include <imgui.h>
 
@@ -17,7 +17,7 @@ text::render()
     if (func_) {
         t = func_();
     }
-    ImGui::Text(t.c_str());
+    ImGui::Text("%s", t.c_str());
 }
 
 }  // namespace graphene::property

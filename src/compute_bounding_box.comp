@@ -1,0 +1,95 @@
+#version 450 core
+
+layout( local_size_x = 32,
+        local_size_y = 1,
+        local_size_z = 1) in;
+
+// input
+uniform layout(location =  1) uint iter_count;
+uniform layout(location =  2) uint max_count;
+uniform layout(location =  3) uint iter;
+uniform layout(location =  4) uint sample_count;
+layout(binding = 0, std430) readonly buffer vbo_buffer { float vbo[]; };
+layout(binding = 1, std430) buffer sample_buffer { uint samples[]; };
+
+// input/output
+layout(binding = 2, std430) buffer work_buffer { float work[]; };
+
+// output
+layout(binding = 3, std430) buffer bbox_buffer { float bbox[]; };
+layout(binding = 4, std430) buffer sample_dist_buffer { uint sample_dists[]; };
+
+const uint work_stride = 6;
+const float eps = 1E-6;
+
+void main(void)
+{
+    uint idx = uint(gl_GlobalInvocationID.x);
+    if (idx >= iter_count) return;
+
+    uint l = 2*idx+0;
+    uint r = 2*idx+1;
+    if (r >= max_count) {
+        r = l;
+    }
+
+    vec3 pos_l, pos_r;
+    if (iter == 0) { // read from vbo
+        vec3 pos_l = vec3(vbo[10*l+0], vbo[10*l+1], vbo[10*l+2]);
+        vec3 pos_r = vec3(vbo[10*r+0], vbo[10*r+1], vbo[10*r+2]);
+        vec3 bb_min = min(pos_l, pos_r);
+        vec3 bb_max = max(pos_l, pos_r);
+        work[work_stride*idx+0] = bb_min.x;
+        work[work_stride*idx+1] = bb_min.y;
+        work[work_stride*idx+2] = bb_min.z;
+        work[work_stride*idx+3] = bb_max.x;
+        work[work_stride*idx+4] = bb_max.y;
+        work[work_stride*idx+5] = bb_max.z;
+
+        if (idx == 0) {
+            for (uint i = 0; i < sample_count; ++i) {
+                sample_dists[i] = -1; // inf equivalent
+            }
+        }
+        memoryBarrier();
+        for (uint i = 0; i < sample_count; ++i) {
+            uint smp_idx = samples[i];
+            vec3 smp_pos = vec3(vbo[10*smp_idx+0], vbo[10*smp_idx+1], vbo[10*smp_idx+2]);
+            float sdist_r = length(pos_r - smp_pos);
+            float sdist_l = length(pos_l - smp_pos);
+
+            if (smp_idx != l) {
+                atomicMin(sample_dists[i], floatBitsToUint(sdist_l));
+            }
+            if (smp_idx != r) {
+                atomicMin(sample_dists[i], floatBitsToUint(sdist_r));
+            }
+        }
+        return;
+    }
+
+    // otherwise read from previous iteration
+    vec3 min_l = vec3(work[work_stride*l+0], work[work_stride*l+1], work[work_stride*l+2]);
+    vec3 max_l = vec3(work[work_stride*l+3], work[work_stride*l+4], work[work_stride*l+5]);
+    vec3 min_r = vec3(work[work_stride*r+0], work[work_stride*r+1], work[work_stride*r+2]);
+    vec3 max_r = vec3(work[work_stride*r+3], work[work_stride*r+4], work[work_stride*r+5]);
+    vec3 bb_min = min(min_l, min_r);
+    vec3 bb_max = max(max_l, max_r);
+    memoryBarrier();
+
+    work[work_stride*idx+0] = bb_min.x;
+    work[work_stride*idx+1] = bb_min.y;
+    work[work_stride*idx+2] = bb_min.z;
+    work[work_stride*idx+3] = bb_max.x;
+    work[work_stride*idx+4] = bb_max.y;
+    work[work_stride*idx+5] = bb_max.z;
+
+    if (iter_count < 2) {
+        bbox[0] = work[0];
+        bbox[1] = work[1];
+        bbox[2] = work[2];
+        bbox[3] = work[3];
+        bbox[4] = work[4];
+        bbox[5] = work[5];
+    }
+}

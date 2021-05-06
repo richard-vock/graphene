@@ -3,7 +3,7 @@
 #include <string>
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32)
-#define SHADER_ROOT std::string("shader/")
+#define GRAPHENE_SHADER_ROOT std::string("shader/")
 #else
-#define SHADER_ROOT std::string("@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_DATAROOTDIR@/shaders/")
+#define GRAPHENE_SHADER_ROOT std::string("@CMAKE_INSTALL_PREFIX@/@CMAKE_INSTALL_DATAROOTDIR@/shaders/")
 #endif

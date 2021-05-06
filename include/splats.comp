@@ -1,0 +1,27 @@
+vec3
+pixel_to_near_plane(vec2 px, vec2 res, mat4 proj_mat) {
+    // retrieve some parameters from the projection matrix
+    float n = proj_mat[3][2] / (proj_mat[2][2] - 1.0);
+    //float f = proj_mat[3][2] / (proj_mat[2][2] + 1.0);
+    float r = n / proj_mat[0][0];
+    float t = n / proj_mat[1][1];
+
+    // compute point on near plane corresponding to
+    // pixel coordinates
+    vec2 uv = 2.0 * px / res - 1.0;
+    return vec3(uv * vec2(r,t), -n);
+}
+
+vec3
+splat_projection(vec2 px, vec2 res, vec3 c_eye, vec3 c_eye_nrm, mat4 proj_mat) {
+    if (length(c_eye_nrm) < 0.5) {
+        // in case of invalid normals assume them pointing towards image plane
+        c_eye_nrm = vec3(0, 0, 1);
+    }
+    mat4 inv_pr = inverse(proj_mat); // works with any projection matrix - the above function does not
+    vec4 ray = inv_pr * vec4(2.0 * px / res - 1.0, -1.0, 1.0);
+    ray /= ray.w;
+    return ray.xyz * dot(c_eye, c_eye_nrm) / dot(ray.xyz, c_eye_nrm);
+    // vec3 qn = pixel_to_near_plane(px, res, proj_mat);
+    // return qn * dot(c_eye, c_eye_nrm) / dot(qn, c_eye_nrm);
+}

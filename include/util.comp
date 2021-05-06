@@ -1,0 +1,116 @@
+const float PI = 3.14159265359;
+
+ivec2
+to_pixel(uint lin, ivec2 res) {
+    return ivec2(lin % res.x, lin / res.x);
+}
+
+uint
+to_linear(ivec2 px, ivec2 res) {
+    return px.y * res.x + px.x;
+}
+
+uint
+to_linear(uint plane, ivec2 px, ivec2 res) {
+    return plane * res.x * res.y + px.y * res.x + px.x;
+}
+
+bool
+float_equal(float a, float b) {
+    return abs(a-b) < 1E-5;
+}
+
+bool
+float_zero(float x) {
+    return float_equal(x, 0.f);
+}
+
+float
+saturate(float x) {
+    return clamp(x, 0.0, 1.0);
+}
+
+vec2
+saturate(vec2 x) {
+    return clamp(x, 0.0, 1.0);
+}
+
+vec3
+saturate(vec3 x) {
+    return clamp(x, 0.0, 1.0);
+}
+
+vec4
+saturate(vec4 x) {
+    return clamp(x, 0.0, 1.0);
+}
+
+float
+pack_rgba(vec4 col) {
+    uvec4 ucol = uvec4(255.0 * col) & uint(255);
+    uint pack = (ucol.r <<  0 )
+              | (ucol.g <<  8 )
+              | (ucol.b << 16 )
+              | (ucol.a << 24 );
+    return uintBitsToFloat(pack);
+}
+
+vec4
+unpack_rgba(float fltcol) {
+    uint pack = floatBitsToUint(fltcol);
+    vec4 col;
+    col.r = float((pack >>  0) & uint(255)) / 255.0;
+    col.g = float((pack >>  8) & uint(255)) / 255.0;
+    col.b = float((pack >> 16) & uint(255)) / 255.0;
+    col.a = float((pack >> 24) & uint(255)) / 255.0;
+    return col;
+}
+
+vec4
+unpack_rgba(uint pack) {
+    vec4 col;
+    col.r = float((pack >>  0) & uint(255)) / 255.0;
+    col.g = float((pack >>  8) & uint(255)) / 255.0;
+    col.b = float((pack >> 16) & uint(255)) / 255.0;
+    col.a = float((pack >> 24) & uint(255)) / 255.0;
+    return col;
+}
+
+// cancel sets a value to zero without the
+// compiler noticing it - hence not removing
+// its sources from the active shader uniforms
+
+float
+cancel(float x) {
+    float y = 1E-5 * saturate(x);
+    if (y < 0.01) y = 0;
+    return y;
+}
+
+vec2
+cancel(vec2 x) {
+    vec2 y = 1E-5 * saturate(x);
+    if (y.x < 0.01) y = vec2(0);
+    return y;
+}
+
+vec3
+cancel(vec3 x) {
+    vec3 y = 1E-5 * saturate(x);
+    if (y.x < 0.01) y = vec3(0);
+    return y;
+}
+
+vec4
+cancel(vec4 x) {
+    vec4 y = 1E-5 * saturate(x);
+    if (y.x < 0.01) y = vec4(0);
+    return y;
+}
+
+vec4
+background_gradient(vec4 inner, vec4 outer, vec2 uv) {
+    vec2 delta = uv - vec2(0.5);
+    float sqr_dist = saturate(dot(delta, delta) / 0.5);
+    return mix(inner, outer, sqr_dist);
+}

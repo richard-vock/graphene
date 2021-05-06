@@ -14,7 +14,7 @@
 
 #include <baldr/baldr.hpp>
 using namespace baldr;
-#include <impl/imgui.hpp>
+#include <imgui.hpp>
 
 // GLFW
 #include <GLFW/glfw3.h>
@@ -628,8 +628,8 @@ create_device_objects()
     //glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &last_array_buffer);
     //glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &last_vertex_array);
 
-    g_vert_shader = shader_program::load(SHADER_ROOT + "imgui.vert", GL_VERTEX_SHADER);
-    g_frag_shader = shader_program::load(SHADER_ROOT + "imgui.frag", GL_FRAGMENT_SHADER);
+    g_vert_shader = shader_program::load_binary(GRAPHENE_SHADER_ROOT + "imgui.vert", GL_VERTEX_SHADER);
+    g_frag_shader = shader_program::load_binary(GRAPHENE_SHADER_ROOT + "imgui.frag", GL_FRAGMENT_SHADER);
     g_pipeline = std::shared_ptr<shader_pipeline>(new shader_pipeline(g_vert_shader, g_frag_shader));
 
     g_AttribLocationPosition = g_vert_shader->input("position").location;
