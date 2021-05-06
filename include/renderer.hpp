@@ -21,7 +21,10 @@ class renderer
 public:
     struct parameters {
         shared<bool> show_normals = false;
-        shared<float> splat_radius = 0.2f;
+        shared<float> splat_radius = 1.0f;
+
+        shared<Eigen::Vector4f> background_inner = Eigen::Vector4f(0.15f, 0.15f, 0.15f, 1.f);
+        shared<Eigen::Vector4f> background_outer = Eigen::Vector4f(0.05f, 0.05f, 0.05f, 1.f);
 
         shared<bool> tonemapping_enabled = true;
         shared<bool> rebuild_lut = true;

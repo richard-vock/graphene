@@ -51,8 +51,6 @@ struct renderer::impl {
 
     std::mutex data_mutex_;
     std::map<std::string, std::shared_ptr<renderable>> objects_;
-    shared<vec4f_t> clear_color_inner_;
-    shared<vec4f_t> clear_color_outer_;
 
     parameters params_;
 
@@ -61,11 +59,8 @@ struct renderer::impl {
          const parameters& params)
         : events_(events), cam_(cam), params_(params)
     {
-        clear_color_inner_ = vec4f_t(0.15f, 0.15f, 0.15f, 1.f);
-        clear_color_outer_ = vec4f_t(0.05f, 0.05f, 0.05f, 1.f);
-
         splat_renderer_ = std::make_shared<splat_renderer>(
-            params_.splat_radius, clear_color_inner_, clear_color_outer_);
+            params_.splat_radius, params.background_inner, params.background_outer);
         primitive_renderer_ = std::make_shared<primitive_renderer>();
         depth_vis_pass_ = std::make_shared<depth_vis_pass>();
 
@@ -171,7 +166,7 @@ struct renderer::impl {
 
         glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 
-        linear_col->clear(clear_color_inner_.get());
+        linear_col->clear(params_.background_inner.get());
 
         std::lock_guard<std::mutex> lock(data_mutex_);
 
